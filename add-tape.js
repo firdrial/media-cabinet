@@ -12,8 +12,8 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { saveTape } from './tapeStorage';
-import { useFocusEffect } from '@react-navigation/native';
+import { saveTape, loadTapes } from './tapeStorage';
+import { useFocusEffect, usePreventRemove } from '@react-navigation/native';
 import { searchMovieByBarcode, getFullMovieDetails } from './apiService';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -52,6 +52,30 @@ export default function AddTapeScreen({ route, navigation }) {
   const [director, setDirector] = useState(existingTape?.director || '');
   const [writer, setWriter] = useState(existingTape?.writer || '');
 
+  // Track unsaved changes
+  const [isDirty, setIsDirty] = useState(false);
+
+  const handleChange = (setter) => (value) => {
+    setter(value);
+    setIsDirty(prev => prev ? prev : true);
+  };
+
+  // Prevent user from leaving if there are unsaved changes
+  usePreventRemove(isDirty, ({ data }) => {
+    Alert.alert(
+      'Discard changes?',
+      'You have unsaved changes. Are you sure you want to discard them and go back?',
+      [
+        { text: "Don't leave", style: 'cancel', onPress: () => {} },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => navigation.dispatch(data.action),
+        },
+      ]
+    );
+  });
+
   useEffect(() => {
     const fetchData = async () => {
       if (isEdit) return;
@@ -81,6 +105,7 @@ export default function AddTapeScreen({ route, navigation }) {
               setDirector(details.director);
               setWriter(details.writer);
             }
+            setIsDirty(prev => prev ? prev : true);
           } else {
             setTitle('');
             Alert.alert('Not Found', 'No movie found for this barcode. You can enter the details manually.');
@@ -111,6 +136,7 @@ export default function AddTapeScreen({ route, navigation }) {
           setDirector(details.director);
           setWriter(details.writer);
         }
+        setIsDirty(prev => prev ? prev : true);
       } 
     };
 
@@ -124,6 +150,7 @@ export default function AddTapeScreen({ route, navigation }) {
           const pendingJSON = await AsyncStorage.getItem('pending_texture_map');
           if (pendingJSON) {
             setTextureMap(JSON.parse(pendingJSON));
+            setIsDirty(prev => prev ? prev : true);
             await AsyncStorage.removeItem('pending_texture_map');
           }
         } catch (e) {
@@ -151,6 +178,7 @@ export default function AddTapeScreen({ route, navigation }) {
 
     if (!result.canceled) {
       setCoverPhoto(result.assets[0].uri);
+      setIsDirty(prev => prev ? prev : true);
     }
   };
 
@@ -170,6 +198,7 @@ export default function AddTapeScreen({ route, navigation }) {
 
     if (!result.canceled) {
       setCoverPhoto(result.assets[0].uri);
+      setIsDirty(prev => prev ? prev : true);
     }
   };
 
@@ -181,6 +210,7 @@ export default function AddTapeScreen({ route, navigation }) {
         const result = await warpQuad(textureMap.front.uri, textureMap.front.corners, 1030, 1870, false);
         if (result && result.uri) {
           setCoverPhoto(result.uri);
+          setIsDirty(prev => prev ? prev : true);
         } else {
           Alert.alert('Error', 'Could not extract front cover.');
         }
@@ -194,14 +224,10 @@ export default function AddTapeScreen({ route, navigation }) {
   const handleClearCover = () => {
     setShowCoverOptions(false);
     setCoverPhoto(null);
+    setIsDirty(prev => prev ? prev : true);
   };
 
-  const handleSave = async () => {
-    if (!title || title === 'Searching database...') {
-      Alert.alert('Oops', 'Please wait for the search to finish or enter a title!');
-      return;
-    }
-
+  const performSave = async () => {
     const tapeData = {
       id: existingTape?.id || Date.now().toString(),
       collectionId: collectionId || existingTape?.collectionId || null,
@@ -231,6 +257,7 @@ export default function AddTapeScreen({ route, navigation }) {
 
     try {
       await saveTape(tapeData);
+      setIsDirty(false); // Clear dirty state to allow navigation away
       Alert.alert('Success!', `"${title}" has been saved!`);
       
       navigation.replace('TapeDetail', { tape: tapeData, returnToCollection });
@@ -239,6 +266,51 @@ export default function AddTapeScreen({ route, navigation }) {
       console.error('Save error:', error);
       Alert.alert('Error', 'Failed to save the item.');
     }
+  };
+
+  const handleSave = async () => {
+    if (!title || title === 'Searching database...') {
+      Alert.alert('Oops', 'Please wait for the search to finish or enter a title!');
+      return;
+    }
+
+    try {
+      const allTapes = await loadTapes();
+      const targetCollectionId = collectionId || existingTape?.collectionId || null;
+      
+      const duplicate = allTapes.find(tape => {
+        // Skip the current tape if we are editing
+        if (isEdit && tape.id === existingTape.id) return false;
+        
+        // Must be in the same collection
+        const tapeCollectionId = tape.collectionId || null;
+        if (targetCollectionId !== tapeCollectionId) return false;
+        
+        // Check identifiers
+        if (tmdbId && tape.tmdbId && String(tape.tmdbId) === String(tmdbId)) return true;
+        if (barcode && tape.barcode && tape.barcode === barcode) return true;
+        if (title && year && tape.title === title && String(tape.year) === String(year)) return true;
+        if (title && !year && tape.title === title) return true;
+        
+        return false;
+      });
+
+      if (duplicate) {
+        Alert.alert(
+          'Duplicate Item',
+          `"${duplicate.title}" already exists in this collection. Do you want to add it anyway?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Add Anyway', onPress: performSave }
+          ]
+        );
+        return;
+      }
+    } catch (e) {
+      console.error('Duplicate check error:', e);
+    }
+
+    performSave();
   };
 
   return (
@@ -271,10 +343,10 @@ export default function AddTapeScreen({ route, navigation }) {
 
         <Text style={styles.sectionHeader}>Basic Info</Text>
         <Text style={styles.label}>Title</Text>
-        <TextInput style={styles.input} placeholder="e.g., The Matrix" value={title} onChangeText={setTitle} />
+        <TextInput style={styles.input} placeholder="e.g., The Matrix" value={title} onChangeText={handleChange(setTitle)} />
 
         <Text style={styles.label}>Release Year</Text>
-        <TextInput style={styles.input} placeholder="e.g., 1999" keyboardType="numeric" value={year} onChangeText={setYear} />
+        <TextInput style={styles.input} placeholder="e.g., 1999" keyboardType="numeric" value={year} onChangeText={handleChange(setYear)} />
 
         <Text style={styles.label}>Format</Text>
         {allowedFormats ? (
@@ -283,49 +355,52 @@ export default function AddTapeScreen({ route, navigation }) {
               <TouchableOpacity
                 key={fmt}
                 style={[styles.formatChip, format === fmt && styles.formatChipActive]}
-                onPress={() => setFormat(fmt)}
+                onPress={() => {
+                  setFormat(fmt);
+                  setIsDirty(prev => prev ? prev : true);
+                }}
               >
                 <Text style={[styles.formatChipText, format === fmt && styles.formatChipTextActive]}>{fmt}</Text>
               </TouchableOpacity>
             ))}
           </View>
         ) : (
-          <TextInput style={styles.input} placeholder="e.g., VHS, DVD, Betamax" value={format} onChangeText={setFormat} />
+          <TextInput style={styles.input} placeholder="e.g., VHS, DVD, Betamax" value={format} onChangeText={handleChange(setFormat)} />
         )}
 
         <Text style={styles.label}>Edition</Text>
-        <TextInput style={styles.input} placeholder="e.g., Collector's Edition" value={edition} onChangeText={setEdition} />
+        <TextInput style={styles.input} placeholder="e.g., Collector's Edition" value={edition} onChangeText={handleChange(setEdition)} />
 
         <Text style={styles.sectionHeader}>TMDB Details</Text>
         <Text style={styles.label}>Release Date</Text>
-        <TextInput style={styles.input} placeholder="e.g., 1999-10-15" value={releaseDate} onChangeText={setReleaseDate} />
+        <TextInput style={styles.input} placeholder="e.g., 1999-10-15" value={releaseDate} onChangeText={handleChange(setReleaseDate)} />
 
         <Text style={styles.label}>Runtime</Text>
-        <TextInput style={styles.input} placeholder="e.g., 136 min" value={runtime} onChangeText={setRuntime} />
+        <TextInput style={styles.input} placeholder="e.g., 136 min" value={runtime} onChangeText={handleChange(setRuntime)} />
 
         <Text style={styles.label}>Distributor</Text>
-        <TextInput style={styles.input} placeholder="e.g., Warner Bros." value={distributor} onChangeText={setDistributor} />
+        <TextInput style={styles.input} placeholder="e.g., Warner Bros." value={distributor} onChangeText={handleChange(setDistributor)} />
 
         <Text style={styles.label}>Tagline</Text>
-        <TextInput style={styles.input} placeholder="e.g., Welcome to the Real World" value={tagline} onChangeText={setTagline} />
+        <TextInput style={styles.input} placeholder="e.g., Welcome to the Real World" value={tagline} onChangeText={handleChange(setTagline)} />
 
         <Text style={styles.label}>Genres (comma separated)</Text>
-        <TextInput style={styles.input} placeholder="e.g., Action, Sci-Fi" value={genres} onChangeText={setGenres} />
+        <TextInput style={styles.input} placeholder="e.g., Action, Sci-Fi" value={genres} onChangeText={handleChange(setGenres)} />
 
         <Text style={styles.label}>Director</Text>
-        <TextInput style={styles.input} placeholder="e.g., The Wachowskis" value={director} onChangeText={setDirector} />
+        <TextInput style={styles.input} placeholder="e.g., The Wachowskis" value={director} onChangeText={handleChange(setDirector)} />
 
         <Text style={styles.label}>Writer</Text>
-        <TextInput style={styles.input} placeholder="e.g., The Wachowskis" value={writer} onChangeText={setWriter} />
+        <TextInput style={styles.input} placeholder="e.g., The Wachowskis" value={writer} onChangeText={handleChange(setWriter)} />
 
         <Text style={styles.label}>Budget</Text>
-        <TextInput style={styles.input} placeholder="e.g., $63,000,000" value={budget} onChangeText={setBudget} />
+        <TextInput style={styles.input} placeholder="e.g., $63,000,000" value={budget} onChangeText={handleChange(setBudget)} />
 
         <Text style={styles.label}>Revenue</Text>
-        <TextInput style={styles.input} placeholder="e.g., $463,500,000" value={revenue} onChangeText={setRevenue} />
+        <TextInput style={styles.input} placeholder="e.g., $463,500,000" value={revenue} onChangeText={handleChange(setRevenue)} />
 
         <Text style={styles.label}>Production Companies (comma separated)</Text>
-        <TextInput style={styles.input} placeholder="e.g., Warner Bros., Village Roadshow" value={productionCompanies} onChangeText={setProductionCompanies} />
+        <TextInput style={styles.input} placeholder="e.g., Warner Bros., Village Roadshow" value={productionCompanies} onChangeText={handleChange(setProductionCompanies)} />
 
         <Text style={styles.label}>Plot Overview</Text>
         <TextInput 
@@ -334,7 +409,7 @@ export default function AddTapeScreen({ route, navigation }) {
           multiline 
           numberOfLines={4}
           value={overview} 
-          onChangeText={setOverview} 
+          onChangeText={handleChange(setOverview)} 
         />
 
         <Text style={styles.label}>Notes / Condition</Text>
@@ -343,7 +418,7 @@ export default function AddTapeScreen({ route, navigation }) {
           placeholder="Any scratches? Special features?" 
           multiline 
           value={notes} 
-          onChangeText={setNotes} 
+          onChangeText={handleChange(setNotes)} 
         />
 
         {barcode ? (
