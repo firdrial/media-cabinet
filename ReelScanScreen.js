@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, ActivityIndicator, Image, PanResponder } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, ActivityIndicator, Image, PanResponder, Alert } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { Directory, File, Paths } from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { detectQuad, warpQuad } from './modules/quad-detect';
+import GuideBox3D from './GuideBox3D';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -134,6 +135,8 @@ export default function ReelScanScreen({ navigation, route }) {
   const [isCapturing, setIsCapturing] = useState(false);
   const [detecting, setDetecting] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
+
+  const [prevStepKey, setPrevStepKey] = useState(null);
 
   const [review, setReview] = useState(null);
   const [corners, setCorners] = useState(null);
@@ -381,9 +384,6 @@ export default function ReelScanScreen({ navigation, route }) {
         { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
       );
 
-      // Persist the JPEG as a file. Base64-encoding six scan faces and putting
-      // them in AsyncStorage creates a SQLite row larger than Android's
-      // CursorWindow can read.
       const scanDirectory = new Directory(Paths.document, 'tape-scans');
       if (!scanDirectory.exists) {
         scanDirectory.create({ intermediates: true, idempotent: true });
@@ -430,8 +430,6 @@ export default function ReelScanScreen({ navigation, route }) {
           isWarped = true;
         }
       } catch (warpError) {
-        // Retain the source image and corner data for the viewer's legacy
-        // fallback. New scans normally never take this path.
         console.warn(`[ReelScan] Could not pre-warp ${currentStep.key}`, warpError);
       }
 
@@ -450,11 +448,11 @@ export default function ReelScanScreen({ navigation, route }) {
       setCorners(null);
 
       if (stepIndex < SCAN_STEPS.length - 1) {
+        setPrevStepKey(currentStep.key);
         setStepIndex(stepIndex + 1);
       } else {
         const returnTo = route.params?.returnTo;
         if (returnTo) {
-          // FIX: Save to storage and use goBack() to prevent the previous screen from unmounting/remounting
           await AsyncStorage.setItem('pending_texture_map', JSON.stringify(updatedImages));
           navigation.goBack();
         } else {
@@ -475,6 +473,21 @@ export default function ReelScanScreen({ navigation, route }) {
     setCorners(null);
   };
 
+  const exitScan = () => {
+    Alert.alert(
+      'Discard Scan?',
+      'Are you sure you want to exit? Any captured faces for this item will be lost.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => navigation.goBack(),
+        }
+      ]
+    );
+  };
+
   const goBack = () => {
     if (review) { retake(); return; }
     if (stepIndex > 0) {
@@ -483,6 +496,7 @@ export default function ReelScanScreen({ navigation, route }) {
       const updatedImages = { ...capturedImages };
       delete updatedImages[stepKey];
       setCapturedImages(updatedImages);
+      setPrevStepKey(currentStep.key);
       setStepIndex(newStep);
     } else {
       navigation.goBack();
@@ -526,7 +540,11 @@ export default function ReelScanScreen({ navigation, route }) {
             <Text style={styles.refineStep}>{stepIndex + 1} / {SCAN_STEPS.length}</Text>
             <Text style={styles.refineHint}>drag corners to align dotted lines to edges of box art</Text>
           </View>
-          <View style={styles.refineSide} />
+          <View style={styles.refineSide}>
+            <TouchableOpacity onPress={exitScan} style={styles.refineCloseBtn}>
+              <Ionicons name="close" size={24} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.quadGrid}>
@@ -584,14 +602,26 @@ export default function ReelScanScreen({ navigation, route }) {
             <Text style={styles.stepText}>{stepIndex + 1} / {SCAN_STEPS.length}</Text>
             <Text style={styles.labelText}>{currentStep.label}</Text>
           </View>
-          <View style={{ width: 40 }} />
+          <TouchableOpacity onPress={exitScan} style={styles.closeBtn}>
+            <Ionicons name="close" size={28} color="#fff" />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.guideContainer}>
+          <GuideBox3D
+            stepKey={currentStep.key}
+            fromKey={prevStepKey}
+            captured={capturedImages}
+            guideWidth={guideBox.width}
+            guideHeight={guideBox.height}
+          />
           <View
             ref={guideBoxRef}
-            style={[styles.guideBox, { width: guideBox.width, height: guideBox.height }]}
+            style={[styles.guideBoxAnchor, { width: guideBox.width, height: guideBox.height }]}
           />
+        </View>
+
+        <View style={styles.instructionsWrap} pointerEvents="none">
           <Text style={styles.instructions}>{currentStep.instructions}</Text>
         </View>
 
@@ -624,12 +654,15 @@ const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'transparent', justifyContent: 'space-between' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 50 },
   backBtn: { padding: 5 },
+  closeBtn: { padding: 5 }, // Matches backBtn padding for perfect alignment
   stepIndicator: { alignItems: 'center' },
   stepText: { color: '#e07a5f', fontSize: 14, fontWeight: 'bold' },
   labelText: { color: '#fff', fontSize: 20, fontWeight: 'bold', marginTop: 4 },
   guideContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  guideBox: { borderWidth: 3, borderColor: '#00a8ff', backgroundColor: 'rgba(0, 168, 255, 0.1)', borderRadius: 4 },
-  instructions: { color: '#fff', fontSize: 16, marginTop: 24, textAlign: 'center', backgroundColor: 'rgba(0,0,0,0.6)', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, overflow: 'hidden' },
+  guideBoxAnchor: { backgroundColor: 'transparent' },
+  // Moved out of guideContainer, reduced font size, added padding for clean separation
+  instructionsWrap: { alignItems: 'center', paddingVertical: 12 },
+  instructions: { color: '#fff', fontSize: 14, textAlign: 'center', backgroundColor: 'rgba(0,0,0,0.6)', paddingVertical: 6, paddingHorizontal: 16, borderRadius: 20, overflow: 'hidden' },
   controls: { alignItems: 'center', paddingBottom: 40 },
   captureButton: { width: 80, height: 80, borderRadius: 40, borderWidth: 4, borderColor: '#fff', justifyContent: 'center', alignItems: 'center' },
   captureButtonDisabled: { opacity: 0.5 },
@@ -639,6 +672,7 @@ const styles = StyleSheet.create({
   refineHeader: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 20, paddingTop: 50 },
   refineSide: { width: 40 },
   refineBackBtn: { padding: 5, marginTop: 2 },
+  refineCloseBtn: { padding: 5, marginTop: 2 }, // Matches refineBackBtn padding
   refineTitleWrap: { flex: 1, alignItems: 'center' },
   refineTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
   refineStep: { color: '#888', fontSize: 13, marginTop: 2 },

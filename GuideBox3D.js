@@ -5,14 +5,10 @@ import { useTexture } from '@react-three/drei';
 import * as THREE from 'three';
 import { FACE_CONFIGS } from './Tape3DViewer';
 
-const CAM_Z = 3.2;
-const FOV = 40;
-const DURATION = 0.7; // seconds, matches ReelSwap's tumble
-const BORDER_PX = 3;  // matches your old guideBox borderWidth
-const GUIDE_COLOR = '#00a8ff'; // swap to '#3E7BFA' for exact ReelSwap blue
+const DURATION = 1.2;
+const BORDER_PX = 3;
+const GUIDE_COLOR = '#00a8ff';
 
-// Cumulative poses. Yaw runs 0→90→180→270→360 so the front always exits
-// stage-right (ReelSwap direction); top/bottom pitch through the front.
 const POSES = {
   front:  { rx: 0,              ry: 0 },
   left:   { rx: 0,              ry: Math.PI / 2 },
@@ -34,10 +30,6 @@ void main() {
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }`;
 
-// Draws a constant-pixel blue border; interior is either the captured
-// texture or fully discarded (transparent) so the camera shows through.
-// Backface culling (FrontSide) is what creates the wireframe look:
-// only camera-facing panels draw their outlines.
 const FRAG = `
 uniform sampler2D uMap;
 uniform float uHasMap;
@@ -51,7 +43,6 @@ void main() {
                 min(vUv.y, 1.0 - vUv.y) * uFacePx.y);
   if (min(d.x, d.y) < uBorderPx) { gl_FragColor = vec4(uColor, 1.0); return; }
   if (uHasMap > 0.5) {
-    // explicit V-flip: EXGL ignores flipY (same policy as your viewer)
     gl_FragColor = vec4(texture2D(uMap, vec2(vUv.x, 1.0 - vUv.y)).rgb, 1.0);
     return;
   }
@@ -70,7 +61,7 @@ function makeMaterial() {
       uFacePx: { value: new THREE.Vector2(1, 1) },
       uBorderPx: { value: BORDER_PX },
       uColor: { value: new THREE.Color(GUIDE_COLOR) },
-      uFill: { value: 0 }, // set ~0.1 if you want your old tint back
+      uFill: { value: 0.1 },
     },
     vertexShader: VERT,
     fragmentShader: FRAG,
@@ -111,12 +102,13 @@ function GuideFace({ config, material, url }) {
   );
 }
 
-function AnimatedBox({ stepKey, captured, guideWidth, guideHeight }) {
+function AnimatedBox({ stepKey, fromKey, captured, guideWidth, guideHeight }) {
   const group = useRef();
   const propsRef = useRef();
   propsRef.current = { stepKey, guideWidth, guideHeight };
 
-  const curRef = useRef({ rx: POSES[stepKey].rx, ry: POSES[stepKey].ry, s: 0 });
+  const initPose = POSES[fromKey] || POSES[stepKey];
+  const curRef = useRef({ rx: initPose.rx, ry: initPose.ry, s: 0 });
   const animRef = useRef(null);
 
   const materials = useMemo(() => {
@@ -135,7 +127,13 @@ function AnimatedBox({ stepKey, captured, guideWidth, guideHeight }) {
   }, [stepKey]);
 
   useFrame((state, delta) => {
-    const proj = state.size.height / (2 * CAM_Z * Math.tan((FOV * Math.PI) / 360));
+    // Guard against initial frame where size might not be measured yet
+    if (!state.size.height || !state.size.width) return;
+
+    // FIX: For an OrthographicCamera, the `zoom` property IS the exact pixels-per-world-unit.
+    // We use a fixed zoom of 100, so 1 world unit = 100 pixels.
+    const proj = 100;
+
     const { stepKey: key, guideWidth: gw, guideHeight: gh } = propsRef.current;
     const cfg = FACE_MAP[key];
     const sTarget = Math.min(gw / (cfg.width * proj), gh / (cfg.height * proj));
@@ -144,7 +142,7 @@ function AnimatedBox({ stepKey, captured, guideWidth, guideHeight }) {
     if (a) {
       if (a.start < 0) {
         a.start = state.clock.elapsedTime;
-        if (!a.fromS) a.fromS = sTarget; // first mount: snap, don't grow in
+        if (!a.fromS) a.fromS = sTarget;
       }
       const t = Math.min(1, (state.clock.elapsedTime - a.start) / DURATION);
       const e = easeInOutCubic(t);
@@ -160,7 +158,6 @@ function AnimatedBox({ stepKey, captured, guideWidth, guideHeight }) {
     group.current.rotation.set(curRef.current.rx, curRef.current.ry, 0);
     group.current.scale.setScalar(curRef.current.s);
 
-    // keep the border a constant 3px on screen at any scale
     FACE_CONFIGS.forEach((c) => {
       materials[c.key].uniforms.uFacePx.value.set(
         c.width * curRef.current.s * proj,
@@ -189,7 +186,10 @@ export default function GuideBox3D(props) {
       <Canvas
         gl={{ alpha: true, antialias: true }}
         style={{ backgroundColor: 'transparent' }}
-        camera={{ position: [0, 0, CAM_Z], fov: FOV }}
+        // FIX: Switch to OrthographicCamera. This eliminates ALL perspective distortion.
+        // The 3D geometry will now render at the EXACT same pixel dimensions as your 2D guide box.
+        orthographic
+        camera={{ position: [0, 0, 10], zoom: 100 }}
         onCreated={({ gl }) => gl.setClearAlpha(0)}
       >
         <AnimatedBox {...props} />
