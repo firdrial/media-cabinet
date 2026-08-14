@@ -34,11 +34,14 @@ const H_VISIBLE_MARGIN = 1.0;
 const DEFAULT_CAMERA_Z = 5;
 const CAMERA_FOLLOW_SPEED = 16;
 
-const FOCUS_Z = 2.35;
-const ANIMATION_SPEED = 0.14;
+// Moved further back from the camera (which is at z=5) to make the tape visually smaller
+const FOCUS_Z = 1.5; 
+// Slowed down for a smoother, less abrupt transition
+const ANIMATION_SPEED = 0.06; 
 const DRAG_ROTATION_SPEED = 0.012;
 const MAX_X_ROTATION = Math.PI * 0.48;
-const FOCUS_ROTATION_SPEED = 0.22;
+// Slowed down rotation speed
+const FOCUS_ROTATION_SPEED = 0.08; 
 
 const VIEW_MODE_OPTIONS = [
   { value: 'grid', label: 'Grid View', icon: 'grid-outline' },
@@ -357,6 +360,7 @@ function ShelfScene({
   scrollXRef,
   snapCameraRef,
   cullDistance,
+  onReturn,
 }) {
   const controlsRef = useRef(null);
   const spacing = getSpacing(orientation);
@@ -451,6 +455,17 @@ function ShelfScene({
       <directionalLight position={[-5, 2, 4]} intensity={0.35} />
 
       <pointLight position={[0, 3, 3]} intensity={0.25} distance={12} />
+
+      {/* 
+        Invisible backdrop to reliably catch taps outside the tape.
+        React Native's WebGL implementation sometimes misses "empty space" raycasts.
+        This guarantees that tapping the background registers as an interaction 
+        and plays the reverse animation. 
+      */}
+      <mesh position={[0, 0, -5]} onPointerUp={onReturn}>
+        <planeGeometry args={[200, 200]} />
+        <meshBasicMaterial transparent opacity={0} />
+      </mesh>
 
       <OrbitControls
         ref={controlsRef}
@@ -658,6 +673,7 @@ export default function ShelfView3D({
           scrollXRef={scrollXRef}
           snapCameraRef={snapCameraRef}
           cullDistance={cullDistance}
+          onReturn={handleReturn}
         />
       </Canvas>
 
