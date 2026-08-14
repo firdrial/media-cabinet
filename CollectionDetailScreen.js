@@ -16,6 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loadTapes } from './tapeStorage';
+import ShelfView3D from './ShelfView3D';
 
 const { height } = Dimensions.get('window');
 
@@ -35,6 +36,7 @@ const DEFAULT_PREFERENCES = {
 const VIEW_MODE_OPTIONS = [
   { value: 'grid', label: 'Grid View', icon: 'grid-outline' },
   { value: 'list', label: 'List View', icon: 'list-outline' },
+  { value: '3d', label: '3D View', icon: 'cube-outline' },
 ];
 
 export default function CollectionDetailScreen({ route, navigation }) {
@@ -500,125 +502,136 @@ export default function CollectionDetailScreen({ route, navigation }) {
    */
   return (
     <View style={styles.container}>
-      {/* HEADER */}
-      <View style={styles.headerInfo}>
-          <View style={styles.headerRow}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => navigation.goBack()}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Ionicons name="chevron-back" size={28} color="#ffffff" />
-            </TouchableOpacity>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              {/* VIEW MODE DROPDOWN TRIGGER */}
-              <TouchableOpacity
-                style={styles.sortFilterButton}
-                onPress={() => setShowViewMenu(true)}
-              >
-                <Ionicons name={getViewModeIcon()} size={24} color="#ffffff" />
-              </TouchableOpacity>
-              {/* SORT/FILTER */}
-              <TouchableOpacity
-                style={styles.sortFilterButton}
-                onPress={() => setShowSortFilterMenu(true)}
-              >
-                <Ionicons name="options-outline" size={24} color="#ffffff" />
-              </TouchableOpacity>
-            </View>
-          </View>
-          <Text style={styles.collectionTitle}>
-            {collection.title || 'Untitled Collection'}
-          </Text>
-          <Text style={styles.collectionTypes}>{type}</Text>
-          {collection.details ? (
-            <Text style={styles.collectionDetails}>{collection.details}</Text>
-          ) : null}
-      </View>
-
-      {/* SEARCH */}
-      <View style={styles.searchContainer}>
-          <Ionicons
-            name="search"
-            size={20}
-            color="#888888"
-            style={styles.searchIcon}
-          />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search items in this collection..."
-            placeholderTextColor="#666666"
-            value={itemSearch}
-            onChangeText={setItemSearch}
-          />
-          {itemSearch.length > 0 && (
-            <TouchableOpacity
-              onPress={() => setItemSearch('')}
-              style={styles.clearSearch}
-            >
-              <Ionicons name="close-circle" size={20} color="#888888" />
-            </TouchableOpacity>
-          )}
-      </View>
-
-      {/* ACTIVE FILTERS */}
-      {renderActiveFilters()}
-
-      {/* CONTENT */}
-      {renderContent()}
-
-      {/* FAB */}
-      <TouchableOpacity
-          style={styles.fab}
-          onPress={() => setShowAddMenu(true)}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="add" size={32} color="#ffffff" />
-      </TouchableOpacity>
-
-      {/* ================================================== */}
-      {/* VIEW MODE DROPDOWN */}
-      {/* ================================================== */}
-      {showViewMenu && (
+      {viewMode === '3d' ? (
+        <ShelfView3D
+          items={filteredItems}
+          onBack={() => setViewMode('grid')}
+          onViewModeChange={val => setViewMode(val)}
+          onOpenFilters={() => setShowSortFilterMenu(true)}
+        />
+      ) : (
         <>
-          <TouchableWithoutFeedback onPress={() => setShowViewMenu(false)}>
-            <View style={styles.dropdownBackdrop} />
-          </TouchableWithoutFeedback>
-          <View style={styles.viewMenu}>
-            {VIEW_MODE_OPTIONS.map((option, index) => (
-              <TouchableOpacity
-                key={option.value}
-                style={[
-                  styles.viewMenuOption,
-                  index < VIEW_MODE_OPTIONS.length - 1 &&
-                    styles.viewMenuOptionBorder,
-                ]}
-                onPress={() => {
-                  setViewMode(option.value);
-                  setShowViewMenu(false);
-                }}
-              >
-                <Ionicons
-                  name={option.icon}
-                  size={20}
-                  color={viewMode === option.value ? '#e50914' : '#ffffff'}
-                />
-                <Text
-                  style={[
-                    styles.viewMenuOptionText,
-                    viewMode === option.value &&
-                      styles.viewMenuOptionTextActive,
-                  ]}
+          {/* HEADER */}
+          <View style={styles.headerInfo}>
+              <View style={styles.headerRow}>
+                <TouchableOpacity
+                  style={styles.backButton}
+                  onPress={() => navigation.goBack()}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  {option.label}
-                </Text>
-                {viewMode === option.value && (
-                  <Ionicons name="checkmark" size={18} color="#e50914" />
-                )}
-              </TouchableOpacity>
-            ))}
+                  <Ionicons name="chevron-back" size={28} color="#ffffff" />
+                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  {/* VIEW MODE DROPDOWN TRIGGER */}
+                  <TouchableOpacity
+                    style={styles.sortFilterButton}
+                    onPress={() => setShowViewMenu(true)}
+                  >
+                    <Ionicons name={getViewModeIcon()} size={24} color="#ffffff" />
+                  </TouchableOpacity>
+                  {/* SORT/FILTER */}
+                  <TouchableOpacity
+                    style={styles.sortFilterButton}
+                    onPress={() => setShowSortFilterMenu(true)}
+                  >
+                    <Ionicons name="options-outline" size={24} color="#ffffff" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <Text style={styles.collectionTitle}>
+                {collection.title || 'Untitled Collection'}
+              </Text>
+              <Text style={styles.collectionTypes}>{type}</Text>
+              {collection.details ? (
+                <Text style={styles.collectionDetails}>{collection.details}</Text>
+              ) : null}
           </View>
+
+          {/* SEARCH */}
+          <View style={styles.searchContainer}>
+              <Ionicons
+                name="search"
+                size={20}
+                color="#888888"
+                style={styles.searchIcon}
+              />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search items in this collection..."
+                placeholderTextColor="#666666"
+                value={itemSearch}
+                onChangeText={setItemSearch}
+              />
+              {itemSearch.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => setItemSearch('')}
+                  style={styles.clearSearch}
+                >
+                  <Ionicons name="close-circle" size={20} color="#888888" />
+                </TouchableOpacity>
+              )}
+          </View>
+
+          {/* ACTIVE FILTERS */}
+          {renderActiveFilters()}
+
+          {/* CONTENT */}
+          {renderContent()}
+
+          {/* FAB */}
+          <TouchableOpacity
+              style={styles.fab}
+              onPress={() => setShowAddMenu(true)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="add" size={32} color="#ffffff" />
+          </TouchableOpacity>
+
+          {/* ================================================== */}
+          {/* VIEW MODE DROPDOWN */}
+          {/* ================================================== */}
+          {showViewMenu && (
+            <>
+              <TouchableWithoutFeedback onPress={() => setShowViewMenu(false)}>
+                <View style={styles.dropdownBackdrop} />
+              </TouchableWithoutFeedback>
+              <View style={styles.viewMenu}>
+                {VIEW_MODE_OPTIONS.map((option, index) => (
+                  <TouchableOpacity
+                    key={option.value}
+                    style={[
+                      styles.viewMenuOption,
+                      index < VIEW_MODE_OPTIONS.length - 1 &&
+                        styles.viewMenuOptionBorder,
+                    ]}
+                    onPress={() => {
+                      setViewMode(option.value);
+                      setShowViewMenu(false);
+                    }}
+                  >
+                    <Ionicons
+                      name={option.icon}
+                      size={20}
+                      color={viewMode === option.value ? '#e50914' : '#ffffff'}
+                    />
+                    <Text
+                      style={[
+                        styles.viewMenuOptionText,
+                        viewMode === option.value &&
+                          styles.viewMenuOptionTextActive,
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                    {viewMode === option.value && (
+                      <Ionicons name="checkmark" size={18} color="#e50914" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          )}
         </>
       )}
 
