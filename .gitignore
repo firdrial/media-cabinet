@@ -36,6 +36,15 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
-# generated native folders
+# generated native folders (Expo Prebuild / CNG)
 /ios
 /android
+
+# Android Studio / Gradle (Crucial for manual local builds)
+.gradle/
+local.properties
+*.iml
+
+# Ignore build folders and gradle cache inside custom modules
+**/build/
+**/.gradle/
