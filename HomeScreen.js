@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { loadTapes } from './tapeStorage';
+import { loadTapes as loadStoredTapes } from './tapeStorage';
 
 const { height } = Dimensions.get('window');
 
@@ -90,11 +90,13 @@ export default function HomeScreen({ navigation }) {
 
   const loadTapes = async () => {
     try {
-      setTapes(await loadTapes());
+      setTapes(await loadStoredTapes());
     } catch (error) {
+      console.error('Failed to load tapes', error);
       Alert.alert('Error', 'Failed to load collection');
     }
   };
+
 
   const loadCollections = async () => {
     try {

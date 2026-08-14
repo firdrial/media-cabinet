@@ -1,9 +1,7 @@
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, Dimensions } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Tape3DViewer from './Tape3DViewer';
-
-const { width, height } = Dimensions.get('window');
 
 const Tape3DViewerScreen = ({ route, navigation }) => {
   const { textureMap, title } = route.params || {};
@@ -22,12 +20,11 @@ const Tape3DViewerScreen = ({ route, navigation }) => {
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
 
-        <View style={styles.headerContainer}>
-          <Ionicons name="cube-outline" size={20} color="#e07a5f" />
+        <View style={styles.titleContainer}>
           <Text style={styles.title}>{title || '3D Model'}</Text>
         </View>
+        </View>
       </View>
-    </View>
   );
 };
 
@@ -53,21 +50,19 @@ const styles = StyleSheet.create({
     padding: 8,
     pointerEvents: 'auto', // Re-enables touches for the button
   },
-  headerContainer: {
+    titleContainer: {
     position: 'absolute',
-    top: 55,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
+    bottom: 72,
+    left: 24,
+    right: 24,
     pointerEvents: 'none',
   },
   title: {
     color: '#fff',
     fontSize: 16,
+    lineHeight: 21,
     fontWeight: '600',
+    textAlign: 'center',
   },
 });
 
