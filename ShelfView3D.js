@@ -51,6 +51,16 @@ const FOCUS_ROTATION_SPEED = 0.08;
 const FOCUS_DRAG_ZONE_WIDTH_RATIO = 0.68;
 const FOCUS_DRAG_ZONE_HEIGHT_RATIO = 0.62;
 
+// Shelf tap targets are sized to the tape's actual visible face width
+// (VHS_D for spine, VHS_W for cover) rather than the full slot spacing,
+// so a tap only registers on the tape it visually lands on instead of
+// bleeding into whichever slot the point geometrically falls in. This
+// scale factor insets the hit box slightly further, leaving a sliver of
+// dead space between neighbors as tolerance for any screen/3D-projection
+// rounding — tune down if taps still feel like they favor a neighbor,
+// tune up toward 1 if the hit area starts feeling too strict/small.
+const HIT_TARGET_WIDTH_SCALE = 0.92;
+
 const VIEW_MODE_OPTIONS = [
   { value: 'grid', label: 'Grid View', icon: 'grid-outline' },
   { value: 'list', label: 'List View', icon: 'list-outline' },
@@ -63,6 +73,13 @@ const VIEW_MODE_OPTIONS = [
 
 function getSpacing(orientation) {
   return orientation === 'cover' ? COVER_SPACING : SPINE_SPACING;
+}
+
+// Actual visible width (in world units) of the face shown for a given
+// orientation — matches placeholderWidth's logic in TapeOnShelf, kept
+// as its own helper since ShelfHitTargets needs it too.
+function getFaceWidth(orientation) {
+  return orientation === 'cover' ? VHS_W : VHS_D;
 }
 
 /* ============================================================
@@ -228,7 +245,7 @@ function TapeOnShelf({
     }
   });
 
-  const placeholderWidth = orientation === 'cover' ? VHS_W : VHS_D;
+  const placeholderWidth = getFaceWidth(orientation);
 
   return (
     <group ref={groupRef} position={position}>
@@ -350,11 +367,18 @@ function ShelfHitTargets({ items, orientation, onFocus, contentWidth }) {
   const spacingPx = getSpacing(orientation) * PIXELS_PER_UNIT;
   const tapeHitHeight = VHS_H * PIXELS_PER_UNIT;
 
+  // Hit width is the tape's true visible face width for this orientation
+  // (not the full slot spacing) so taps in the gap between tapes, or on
+  // a neighbor's edge, don't get attributed to the wrong tape.
+  const hitWidth = getFaceWidth(orientation) * PIXELS_PER_UNIT * HIT_TARGET_WIDTH_SCALE;
+
   return (
     <View style={{ width: contentWidth, height: SCREEN_HEIGHT }}>
       {items.map((tape, tapeIndex) => {
-        const left =
-          SCREEN_WIDTH / 2 + tapeIndex * spacingPx - spacingPx / 2;
+        // Tape's true center stays anchored to the same slot math as
+        // before — only the hit box's width shrinks around that center.
+        const centerX = SCREEN_WIDTH / 2 + tapeIndex * spacingPx;
+        const left = centerX - hitWidth / 2;
 
         const top = SCREEN_HEIGHT / 2 - tapeHitHeight / 2;
 
@@ -367,7 +391,7 @@ function ShelfHitTargets({ items, orientation, onFocus, contentWidth }) {
               position: 'absolute',
               left,
               top,
-              width: spacingPx,
+              width: hitWidth,
               height: tapeHitHeight,
             }}
           />
@@ -398,6 +422,7 @@ export default function ShelfView3D({
   const scrollXRef = useRef(0);
   const snapCameraRef = useRef(true);
   const scrollViewRef = useRef(null);
+  const randomTapeTimeoutRef = useRef(null);
 
   /*
    * Rotation-while-focused state, shared between the RN PanResponder
@@ -431,6 +456,18 @@ export default function ShelfView3D({
       setFocusedId(null);
     }
   }, [items, focusedId]);
+
+  /* ----------------------------------------------------------
+   * CLEANUP TIMEOUTS ON UNMOUNT
+   * ---------------------------------------------------------- */
+
+  useEffect(() => {
+    return () => {
+      if (randomTapeTimeoutRef.current) {
+        clearTimeout(randomTapeTimeoutRef.current);
+      }
+    };
+  }, []);
 
   /* ----------------------------------------------------------
    * CLAMP SCROLL IF COLLECTION SHRINKS
@@ -483,8 +520,48 @@ export default function ShelfView3D({
    * FOCUS
    * ---------------------------------------------------------- */
 
-  const handleFocus = id => setFocusedId(id);
+  const handleFocus = id => {
+    // If the user manually taps a tape while the random pan is happening,
+    // cancel the pending random focus event to prevent conflicts.
+    if (randomTapeTimeoutRef.current) {
+      clearTimeout(randomTapeTimeoutRef.current);
+      randomTapeTimeoutRef.current = null;
+    }
+    setFocusedId(id);
+  };
+
   const handleReturn = () => setFocusedId(null);
+
+  /* ----------------------------------------------------------
+   * RANDOM TAPE
+   * ---------------------------------------------------------- */
+
+  const handleRandomTape = () => {
+    if (items.length === 0 || focusedId) return;
+
+    const randomIndex = Math.floor(Math.random() * items.length);
+    const randomTape = items[randomIndex];
+    const targetScrollX = randomIndex * spacingPx;
+
+    if (scrollViewRef.current) {
+      // 1. Start the cinematic camera pan
+      scrollViewRef.current.scrollTo({
+        x: targetScrollX,
+        animated: true,
+      });
+
+      // 2. Clear any existing timeouts
+      if (randomTapeTimeoutRef.current) {
+        clearTimeout(randomTapeTimeoutRef.current);
+      }
+
+      // 3. Wait for the camera to mostly arrive at the destination,
+      // then trigger the focus animation so the tape pops out.
+      randomTapeTimeoutRef.current = setTimeout(() => {
+        setFocusedId(randomTape.id);
+      }, 600);
+    }
+  };
 
   /* ----------------------------------------------------------
    * DRAG-TO-ROTATE (RN PanResponder)
@@ -643,6 +720,13 @@ export default function ShelfView3D({
           </TouchableOpacity>
 
           <View style={styles.topBarRight}>
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={handleRandomTape}
+            >
+              <Ionicons name="shuffle-outline" size={22} color="#ffffff" />
+            </TouchableOpacity>
+
             <TouchableOpacity
               style={styles.iconButton}
               onPress={() => setShowViewMenu(true)}
