@@ -28,17 +28,16 @@ const DEFAULT_PREFERENCES = {
   filterDirectors: []
 };
 
-const COLLECTION_TYPES = ['CD', 'Cassette Tape', 'VHS', 'DVD', 'Blu-Ray', 'Laserdisc', 'Video Game'];
+const COLLECTION_TYPES = ['CD', 'VHS', 'DVD', 'Blu-Ray', 'Laserdisc', 'Vinyl Record'];
 
 const getIconForType = (type) => {
   switch (type) {
     case 'CD': return 'disc';
-    case 'Cassette Tape': return 'radio';
     case 'VHS': return 'videocam';
     case 'DVD': return 'disc';
     case 'Blu-Ray': return 'disc';
     case 'Laserdisc': return 'disc';
-    case 'Video Game': return 'game-controller';
+    case 'Vinyl Record': return 'musical-notes';
     default: return 'folder';
   }
 };
@@ -777,4 +776,4 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     textAlign: 'center',
   }
-});
+}); 

@@ -4,12 +4,13 @@ import { Ionicons } from '@expo/vector-icons';
 import Tape3DViewer from './Tape3DViewer';
 
 const Tape3DViewerScreen = ({ route, navigation }) => {
-  const { textureMap, title } = route.params || {};
+  const { textureMap, title, modelId } = route.params || {};
+  const activeModelId = modelId || textureMap?.modelId || 'vhs';
 
   return (
     <View style={styles.container}>
       {/* 3D Canvas */}
-      <Tape3DViewer textureMap={textureMap} />
+      <Tape3DViewer textureMap={textureMap} modelId={activeModelId} />
 
       {/* UI Overlay */}
       <View style={styles.overlay}>
@@ -23,8 +24,8 @@ const Tape3DViewerScreen = ({ route, navigation }) => {
         <View style={styles.titleContainer}>
           <Text style={styles.title}>{title || '3D Model'}</Text>
         </View>
-        </View>
       </View>
+    </View>
   );
 };
 
@@ -50,7 +51,7 @@ const styles = StyleSheet.create({
     padding: 8,
     pointerEvents: 'auto', // Re-enables touches for the button
   },
-    titleContainer: {
+  titleContainer: {
     position: 'absolute',
     bottom: 72,
     left: 24,

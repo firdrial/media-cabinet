@@ -1,8 +1,9 @@
-import React, { Suspense, useState } from 'react';
+import React, { Suspense, useState, useMemo } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, useProgress } from '@react-three/drei';
 import { VHSTape } from './Tape3DViewer';
+import { getModel } from './mediaModels';
 
 function PreviewLoader() {
   const { active } = useProgress();
@@ -14,8 +15,18 @@ function PreviewLoader() {
   );
 }
 
-export default function Tape3DPreview({ textureMap, style }) {
+export default function Tape3DPreview({ textureMap, modelId, style }) {
   const [isRotating, setIsRotating] = useState(true);
+
+  const activeModelId = modelId || textureMap?.modelId || 'vhs';
+
+  // Dynamically adjust camera distance based on the model's largest dimension.
+  // VHS (1.87 tall) -> ~3.5 distance. Vinyl (3.14 tall) -> ~5.9 distance.
+  const cameraZ = useMemo(() => {
+    const dims = getModel(activeModelId).dims;
+    const maxDim = Math.max(dims.w, dims.h, dims.d);
+    return Math.max(3.5, maxDim * 1.87);
+  }, [activeModelId]);
 
   if (!textureMap) return null;
 
@@ -24,7 +35,7 @@ export default function Tape3DPreview({ textureMap, style }) {
   return (
     <View style={[styles.container, style]}>
       <Canvas
-        camera={{ position: [0, 0, 3.5], fov: 45 }}
+        camera={{ position: [0, 0, cameraZ], fov: 45 }}
         gl={{ antialias: true }}
         onPointerMissed={toggleRotation} // Tapping the background toggles rotation
       >
@@ -34,7 +45,7 @@ export default function Tape3DPreview({ textureMap, style }) {
         <Suspense fallback={null}>
           {/* Tapping the 3D model itself toggles rotation */}
           <group onClick={toggleRotation}>
-            <VHSTape textureMap={textureMap} />
+            <VHSTape textureMap={textureMap} modelId={activeModelId} />
           </group>
         </Suspense>
         <OrbitControls 

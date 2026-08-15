@@ -5,11 +5,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { deleteTape, saveTape } from './tapeStorage';
 import { useFocusEffect } from '@react-navigation/native';
 import Tape3DPreview from './Tape3DPreview';
+import { resolveModelId } from './mediaModels';
 
 export default function TapeDetailScreen({ route, navigation }) {
   const { tape } = route.params;
   const returnToCollection = route.params?.returnToCollection || false;
   const [currentTape, setCurrentTape] = useState(tape);
+
+  // Determine the active 3D model ID. Falls back to resolving from format/caseType
+  // for legacy tapes that were saved before the mediaModels registry existed.
+  const activeModelId = currentTape.modelId || currentTape.textureMap?.modelId || resolveModelId(currentTape.format, currentTape.caseType);
 
   useFocusEffect(
     useCallback(() => {
@@ -20,6 +25,10 @@ export default function TapeDetailScreen({ route, navigation }) {
             const parsedMap = JSON.parse(pendingJSON);
             setCurrentTape(prev => {
               const updated = { ...prev, textureMap: parsedMap };
+              // If the scan captured a specific modelId, persist it to the tape record
+              if (parsedMap.modelId) {
+                updated.modelId = parsedMap.modelId;
+              }
               saveTapeToStorage(updated);
               return updated;
             });
@@ -98,12 +107,12 @@ export default function TapeDetailScreen({ route, navigation }) {
       <View style={styles.content}>
         {currentTape.textureMap ? (
           <View style={styles.previewWrapper}>
-            <Tape3DPreview textureMap={currentTape.textureMap} style={{ width: '100%', height: 250 }} />
+            <Tape3DPreview textureMap={currentTape.textureMap} modelId={activeModelId} style={{ width: '100%', height: 250 }} />
             
             {/* Fullscreen Overlay Button (Bottom Right) */}
             <TouchableOpacity 
               style={styles.overlayButton} 
-              onPress={() => navigation.navigate('Tape3DViewer', { textureMap: currentTape.textureMap, title: currentTape.title })}
+              onPress={() => navigation.navigate('Tape3DViewer', { textureMap: currentTape.textureMap, title: currentTape.title, modelId: activeModelId })}
             >
               <Ionicons name="expand-outline" size={22} color="#ffffff" />
             </TouchableOpacity>
@@ -120,7 +129,7 @@ export default function TapeDetailScreen({ route, navigation }) {
             {/* Fallback button when no 3D scan exists yet */}
             <TouchableOpacity 
               style={styles.scan3DFallbackButton} 
-              onPress={() => navigation.navigate('ReelScan', { returnTo: 'TapeDetail' })}
+              onPress={() => navigation.navigate('ReelScan', { returnTo: 'TapeDetail', modelId: activeModelId })}
             >
               <Ionicons name="scan-outline" size={20} color="#ffffff" />
               <Text style={styles.scan3DFallbackButtonText}>Scan 3D Box</Text>

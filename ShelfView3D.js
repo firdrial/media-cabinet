@@ -13,6 +13,7 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { VHSTape } from './Tape3DViewer';
 import { Ionicons } from '@expo/vector-icons';
+import { getModel, resolveModelId } from './mediaModels';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -20,45 +21,20 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
  * CONFIGURATION
  * ============================================================ */
 
-const VHS_W = 1.03;
-const VHS_H = 1.87;
-const VHS_D = 0.25;
-
 const PIXELS_PER_UNIT = 120;
-
-const SPINE_SPACING = 0.28;
-const COVER_SPACING = 1.1;
 
 const H_VISIBLE_MARGIN = 1.0;
 
-const DEFAULT_CAMERA_Z = 5;
 const CAMERA_FOLLOW_SPEED = 16;
 
-// Moved further back from the camera (which is at z=5) to make the tape visually smaller
-const FOCUS_Z = 1.5;
-// Slowed down for a smoother, less abrupt transition
 const ANIMATION_SPEED = 0.06;
 const DRAG_ROTATION_SPEED = 0.012;
 const MAX_X_ROTATION = Math.PI * 0.48;
-// Slowed down rotation speed
 const FOCUS_ROTATION_SPEED = 0.08;
 
-// RN-level hit zone used to capture drag-to-rotate gestures while a tape
-// is focused. Anything outside this centered rectangle (but still on
-// screen) counts as "tap outside" and unfocuses the tape. This is
-// deliberately generous so it comfortably covers the tape regardless of
-// spine/cover orientation.
 const FOCUS_DRAG_ZONE_WIDTH_RATIO = 0.68;
 const FOCUS_DRAG_ZONE_HEIGHT_RATIO = 0.62;
 
-// Shelf tap targets are sized to the tape's actual visible face width
-// (VHS_D for spine, VHS_W for cover) rather than the full slot spacing,
-// so a tap only registers on the tape it visually lands on instead of
-// bleeding into whichever slot the point geometrically falls in. This
-// scale factor insets the hit box slightly further, leaving a sliver of
-// dead space between neighbors as tolerance for any screen/3D-projection
-// rounding — tune down if taps still feel like they favor a neighbor,
-// tune up toward 1 if the hit area starts feeling too strict/small.
 const HIT_TARGET_WIDTH_SCALE = 0.92;
 
 const VIEW_MODE_OPTIONS = [
@@ -71,15 +47,12 @@ const VIEW_MODE_OPTIONS = [
  * SHELF HELPERS
  * ============================================================ */
 
-function getSpacing(orientation) {
-  return orientation === 'cover' ? COVER_SPACING : SPINE_SPACING;
+function getSpacing(model, orientation) {
+  return orientation === 'cover' ? model.shelf.spacing.cover : (model.shelf.spacing.spine ?? model.shelf.spacing.cover);
 }
 
-// Actual visible width (in world units) of the face shown for a given
-// orientation — matches placeholderWidth's logic in TapeOnShelf, kept
-// as its own helper since ShelfHitTargets needs it too.
-function getFaceWidth(orientation) {
-  return orientation === 'cover' ? VHS_W : VHS_D;
+function getFaceWidth(model, orientation) {
+  return orientation === 'cover' ? model.dims.w : model.dims.d;
 }
 
 /* ============================================================
@@ -105,6 +78,9 @@ function TapeOnShelf({
   isFocused,
   cullDistance,
   dragRotationRef,
+  modelId,
+  model,
+  focusZ,
 }) {
   const groupRef = useRef(null);
 
@@ -118,12 +94,6 @@ function TapeOnShelf({
 
   const wasFocused = useRef(false);
 
-  /*
-   * Localized culling state.
-   * This only re-renders this individual tape when it crosses
-   * the visibility threshold, instead of re-rendering the whole
-   * scene on every scroll event.
-   */
   const [renderFull, setRenderFull] = useState(
     () => isFocused || Math.abs(position[0]) < cullDistance
   );
@@ -133,15 +103,6 @@ function TapeOnShelf({
   useEffect(() => {
     renderFullRef.current = renderFull;
   }, [renderFull]);
-
-  /* ----------------------------------------------------------
-   * FOCUS TRANSITION
-   *
-   * Rotation while focused is now driven entirely by a shared ref
-   * (dragRotationRef) that's updated by an RN PanResponder in the
-   * parent component, instead of by r3f pointer events on this
-   * mesh. We still reset it here the moment a tape becomes focused.
-   * ---------------------------------------------------------- */
 
   useEffect(() => {
     if (isFocused && !wasFocused.current) {
@@ -168,10 +129,6 @@ function TapeOnShelf({
     wasFocused.current = isFocused;
   }, [isFocused, orientation, dragRotationRef]);
 
-  /* ----------------------------------------------------------
-   * FRAME ANIMATION
-   * ---------------------------------------------------------- */
-
   useFrame(({ camera }) => {
     const group = groupRef.current;
     if (!group) return;
@@ -180,10 +137,6 @@ function TapeOnShelf({
       ? camera.position.x
       : position[0];
 
-    /*
-     * Imperative culling check.
-     * This avoids passing scrollX through React state.
-     */
     const shouldRenderFull =
       isFocused || Math.abs(cameraX - position[0]) < cullDistance;
 
@@ -193,7 +146,7 @@ function TapeOnShelf({
     }
 
     if (isFocused) {
-      targetPos.current.set(camera.position.x, 0, FOCUS_Z);
+      targetPos.current.set(camera.position.x, 0, focusZ);
 
       const m = dragRotationRef.current;
 
@@ -214,7 +167,6 @@ function TapeOnShelf({
       );
     }
 
-    /* Position */
     if (
       !isFiniteNumber(group.position.x) ||
       !isFiniteNumber(group.position.y) ||
@@ -225,7 +177,6 @@ function TapeOnShelf({
       group.position.lerp(targetPos.current, ANIMATION_SPEED);
     }
 
-    /* Rotation */
     const rotTarget = isFocused
       ? dragRotationRef.current
       : targetRot.current;
@@ -245,15 +196,15 @@ function TapeOnShelf({
     }
   });
 
-  const placeholderWidth = getFaceWidth(orientation);
+  const placeholderWidth = getFaceWidth(model, orientation);
 
   return (
     <group ref={groupRef} position={position}>
       {renderFull || isFocused ? (
-        <VHSTape textureMap={tape.textureMap} />
+        <VHSTape textureMap={tape.textureMap} modelId={modelId} />
       ) : (
         <mesh>
-          <boxGeometry args={[placeholderWidth, VHS_H, VHS_D]} />
+          <boxGeometry args={[placeholderWidth, model.dims.h, model.dims.d]} />
           <meshStandardMaterial color="#211815" roughness={0.85} />
         </mesh>
       )}
@@ -273,13 +224,12 @@ function ShelfScene({
   snapCameraRef,
   cullDistance,
   dragRotationRef,
+  spacing,
+  modelId,
+  model,
+  defaultCameraZ,
+  focusZ,
 }) {
-  const spacing = getSpacing(orientation);
-
-  /*
-   * Camera movement is handled imperatively inside useFrame.
-   * This prevents React re-renders on every scroll event.
-   */
   useFrame(({ camera }, delta) => {
     const safeDelta = clamp(
       isFiniteNumber(delta) ? delta : 0.016,
@@ -287,9 +237,6 @@ function ShelfScene({
       0.1
     );
 
-    /*
-     * While focused, hold the camera steady.
-     */
     if (focusedId) {
       snapCameraRef.current = false;
       return;
@@ -299,20 +246,12 @@ function ShelfScene({
       ? scrollXRef.current / PIXELS_PER_UNIT
       : 0;
 
-    /*
-     * Hard reset used for orientation changes and initialization.
-     */
     if (snapCameraRef.current) {
-      camera.position.set(targetX, 0, DEFAULT_CAMERA_Z);
+      camera.position.set(targetX, 0, defaultCameraZ);
       snapCameraRef.current = false;
       return;
     }
 
-    /*
-     * Frame-rate independent smoothing.
-     * This hides tiny JS-thread/UI-thread delays and makes
-     * the camera glide instead of jitter.
-     */
     const alpha = 1 - Math.exp(-CAMERA_FOLLOW_SPEED * safeDelta);
 
     camera.position.x = THREE.MathUtils.lerp(
@@ -325,7 +264,7 @@ function ShelfScene({
 
     camera.position.z = THREE.MathUtils.lerp(
       camera.position.z,
-      DEFAULT_CAMERA_Z,
+      defaultCameraZ,
       alpha
     );
   });
@@ -352,6 +291,9 @@ function ShelfScene({
             isFocused={focusedId === tape.id}
             cullDistance={cullDistance}
             dragRotationRef={dragRotationRef}
+            modelId={modelId}
+            model={model}
+            focusZ={focusZ}
           />
         );
       })}
@@ -363,20 +305,13 @@ function ShelfScene({
  * NATIVE HIT TARGETS
  * ============================================================ */
 
-function ShelfHitTargets({ items, orientation, onFocus, contentWidth }) {
-  const spacingPx = getSpacing(orientation) * PIXELS_PER_UNIT;
-  const tapeHitHeight = VHS_H * PIXELS_PER_UNIT;
-
-  // Hit width is the tape's true visible face width for this orientation
-  // (not the full slot spacing) so taps in the gap between tapes, or on
-  // a neighbor's edge, don't get attributed to the wrong tape.
-  const hitWidth = getFaceWidth(orientation) * PIXELS_PER_UNIT * HIT_TARGET_WIDTH_SCALE;
+function ShelfHitTargets({ items, orientation, onFocus, contentWidth, spacingPx, model }) {
+  const tapeHitHeight = model.dims.h * PIXELS_PER_UNIT;
+  const hitWidth = getFaceWidth(model, orientation) * PIXELS_PER_UNIT * HIT_TARGET_WIDTH_SCALE;
 
   return (
     <View style={{ width: contentWidth, height: SCREEN_HEIGHT }}>
       {items.map((tape, tapeIndex) => {
-        // Tape's true center stays anchored to the same slot math as
-        // before — only the hit box's width shrinks around that center.
         const centerX = SCREEN_WIDTH / 2 + tapeIndex * spacingPx;
         const left = centerX - hitWidth / 2;
 
@@ -415,27 +350,27 @@ export default function ShelfView3D({
   const [focusedId, setFocusedId] = useState(null);
   const [showViewMenu, setShowViewMenu] = useState(false);
 
-  /*
-   * Scroll position is stored in a ref, not state.
-   * This prevents React re-renders while swiping.
-   */
   const scrollXRef = useRef(0);
   const snapCameraRef = useRef(true);
   const scrollViewRef = useRef(null);
   const randomTapeTimeoutRef = useRef(null);
 
-  /*
-   * Rotation-while-focused state, shared between the RN PanResponder
-   * below (which owns the actual touch gesture) and TapeOnShelf
-   * (which reads it every frame inside the Canvas). Driving this via
-   * plain RN touch handling instead of r3f pointer events is what
-   * makes both "drag to rotate" and "tap outside to unfocus"
-   * reliable on native.
-   */
   const dragRotationRef = useRef({ x: 0, y: 0, z: 0 });
   const dragBaseRotationRef = useRef({ x: 0, y: 0, z: 0 });
 
-  const spacing = getSpacing(orientation);
+  // Derive the uniform model for the entire shelf from the first item
+  const firstItem = items[0];
+  const modelId = firstItem 
+    ? (firstItem.modelId || firstItem.textureMap?.modelId || resolveModelId(firstItem.format, firstItem.caseType)) 
+    : 'vhs';
+  const model = getModel(modelId);
+
+  // Dynamically scale camera distances based on the physical size of the media.
+  const maxDim = Math.max(model.dims.w, model.dims.h, model.dims.d);
+  const defaultCameraZ = maxDim * 2.7; // You noted this resting distance looks good
+  const focusZ = maxDim * 1.5;         // Pushed back from 0.85 so focused items don't engulf the screen
+
+  const spacing = getSpacing(model, orientation);
   const spacingPx = spacing * PIXELS_PER_UNIT;
 
   const maxCameraX = Math.max(0, (items.length - 1) * spacing);
@@ -447,19 +382,11 @@ export default function ShelfView3D({
   const cullDistance =
     SCREEN_WIDTH / PIXELS_PER_UNIT / 2 + H_VISIBLE_MARGIN;
 
-  /* ----------------------------------------------------------
-   * CLEAR INVALID FOCUS
-   * ---------------------------------------------------------- */
-
   useEffect(() => {
     if (focusedId && !items.some(item => item.id === focusedId)) {
       setFocusedId(null);
     }
   }, [items, focusedId]);
-
-  /* ----------------------------------------------------------
-   * CLEANUP TIMEOUTS ON UNMOUNT
-   * ---------------------------------------------------------- */
 
   useEffect(() => {
     return () => {
@@ -468,10 +395,6 @@ export default function ShelfView3D({
       }
     };
   }, []);
-
-  /* ----------------------------------------------------------
-   * CLAMP SCROLL IF COLLECTION SHRINKS
-   * ---------------------------------------------------------- */
 
   useEffect(() => {
     if (scrollXRef.current > maxScrollPx) {
@@ -487,10 +410,6 @@ export default function ShelfView3D({
     }
   }, [maxScrollPx]);
 
-  /* ----------------------------------------------------------
-   * ORIENTATION
-   * ---------------------------------------------------------- */
-
   const handleOrientationChange = () => {
     if (focusedId) return;
 
@@ -502,10 +421,6 @@ export default function ShelfView3D({
     snapCameraRef.current = true;
   };
 
-  /* ----------------------------------------------------------
-   * SCROLL
-   * ---------------------------------------------------------- */
-
   const handleScroll = event => {
     const nextX = event.nativeEvent.contentOffset.x;
 
@@ -516,13 +431,7 @@ export default function ShelfView3D({
     );
   };
 
-  /* ----------------------------------------------------------
-   * FOCUS
-   * ---------------------------------------------------------- */
-
   const handleFocus = id => {
-    // If the user manually taps a tape while the random pan is happening,
-    // cancel the pending random focus event to prevent conflicts.
     if (randomTapeTimeoutRef.current) {
       clearTimeout(randomTapeTimeoutRef.current);
       randomTapeTimeoutRef.current = null;
@@ -532,10 +441,6 @@ export default function ShelfView3D({
 
   const handleReturn = () => setFocusedId(null);
 
-  /* ----------------------------------------------------------
-   * RANDOM TAPE
-   * ---------------------------------------------------------- */
-
   const handleRandomTape = () => {
     if (items.length === 0 || focusedId) return;
 
@@ -544,32 +449,20 @@ export default function ShelfView3D({
     const targetScrollX = randomIndex * spacingPx;
 
     if (scrollViewRef.current) {
-      // 1. Start the cinematic camera pan
       scrollViewRef.current.scrollTo({
         x: targetScrollX,
         animated: true,
       });
 
-      // 2. Clear any existing timeouts
       if (randomTapeTimeoutRef.current) {
         clearTimeout(randomTapeTimeoutRef.current);
       }
 
-      // 3. Wait for the camera to mostly arrive at the destination,
-      // then trigger the focus animation so the tape pops out.
       randomTapeTimeoutRef.current = setTimeout(() => {
         setFocusedId(randomTape.id);
       }, 600);
     }
   };
-
-  /* ----------------------------------------------------------
-   * DRAG-TO-ROTATE (RN PanResponder)
-   *
-   * Lives entirely outside the Canvas. onPanResponderGrant snapshots
-   * the current rotation so repeated drags within the same focus
-   * session accumulate naturally instead of resetting each time.
-   * ---------------------------------------------------------- */
 
   const panResponder = useRef(
     PanResponder.create({
@@ -594,10 +487,6 @@ export default function ShelfView3D({
     })
   ).current;
 
-  /* ----------------------------------------------------------
-   * VIEW MODE
-   * ---------------------------------------------------------- */
-
   const handleSelectViewMode = value => {
     setShowViewMenu(false);
 
@@ -611,16 +500,10 @@ export default function ShelfView3D({
 
   return (
     <View style={styles.container}>
-      {/* =====================================================
-       * 3D CANVAS
-       * Touch handling now lives entirely at the RN level (below),
-       * so the Canvas never needs to intercept pointer events.
-       * ===================================================== */}
-
       <Canvas
         pointerEvents="none"
         camera={{
-          position: [0, 0, DEFAULT_CAMERA_Z],
+          position: [0, 0, defaultCameraZ],
           fov: 50,
         }}
         style={StyleSheet.absoluteFill}
@@ -639,12 +522,13 @@ export default function ShelfView3D({
           snapCameraRef={snapCameraRef}
           cullDistance={cullDistance}
           dragRotationRef={dragRotationRef}
+          spacing={spacing}
+          modelId={modelId}
+          model={model}
+          defaultCameraZ={defaultCameraZ}
+          focusZ={focusZ}
         />
       </Canvas>
-
-      {/* =====================================================
-       * HORIZONTAL SCROLL DRIVER
-       * ===================================================== */}
 
       <ScrollView
         ref={scrollViewRef}
@@ -676,15 +560,10 @@ export default function ShelfView3D({
           orientation={orientation}
           onFocus={handleFocus}
           contentWidth={contentWidth}
+          spacingPx={spacingPx}
+          model={model}
         />
       </ScrollView>
-
-      {/* =====================================================
-       * FOCUS-MODE TOUCH LAYER
-       * Full-screen "tap outside closes" catcher, with a smaller
-       * centered zone on top that captures drag-to-rotate and
-       * therefore never lets those touches reach the outer catcher.
-       * ===================================================== */}
 
       {focusedId && (
         <TouchableWithoutFeedback onPress={handleReturn}>
@@ -704,10 +583,6 @@ export default function ShelfView3D({
           </View>
         </TouchableWithoutFeedback>
       )}
-
-      {/* =====================================================
-       * TOP BAR
-       * ===================================================== */}
 
       {!focusedId && (
         <View style={styles.topBar} pointerEvents="box-none">
@@ -743,10 +618,6 @@ export default function ShelfView3D({
           </View>
         </View>
       )}
-
-      {/* =====================================================
-       * VIEW MODE MENU
-       * ===================================================== */}
 
       {!focusedId && showViewMenu && (
         <>
@@ -794,10 +665,6 @@ export default function ShelfView3D({
           </View>
         </>
       )}
-
-      {/* =====================================================
-       * ORIENTATION TOGGLE
-       * ===================================================== */}
 
       {!focusedId && (
         <View style={styles.controlsContainer} pointerEvents="box-none">

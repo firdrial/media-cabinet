@@ -19,6 +19,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import Tape3DPreview from './Tape3DPreview';
 import { warpQuad } from './modules/quad-detect';
+import { resolveModelId, getModel, getCaseTypes } from './mediaModels';
 
 export default function AddTapeScreen({ route, navigation }) {
   const isEdit = !!route.params?.tape;
@@ -31,6 +32,7 @@ export default function AddTapeScreen({ route, navigation }) {
   const [title, setTitle] = useState(existingTape?.title || '');
   const [year, setYear] = useState(existingTape?.year || '');
   const [format, setFormat] = useState(existingTape?.format || (allowedFormats ? allowedFormats[0] : 'VHS'));
+  const [caseType, setCaseType] = useState(existingTape?.caseType || 'slipcase');
   const [notes, setNotes] = useState(existingTape?.notes || '');
   const [barcode, setBarcode] = useState(existingTape?.barcode || '');
   const [tmdbId, setTmdbId] = useState(existingTape?.tmdbId || '');
@@ -52,6 +54,8 @@ export default function AddTapeScreen({ route, navigation }) {
   const [director, setDirector] = useState(existingTape?.director || '');
   const [writer, setWriter] = useState(existingTape?.writer || '');
 
+  const modelId = resolveModelId(format, caseType);
+
   // Track unsaved changes
   const [isDirty, setIsDirty] = useState(false);
   
@@ -60,6 +64,17 @@ export default function AddTapeScreen({ route, navigation }) {
 
   const handleChange = (setter) => (value) => {
     setter(value);
+    setIsDirty(prev => prev ? prev : true);
+  };
+
+  const handleFormatChange = (fmt) => {
+    setFormat(fmt);
+    const types = getCaseTypes(fmt);
+    if (types && !types.find(t => t.id === caseType)) {
+      setCaseType(types[0].id);
+    } else if (!types) {
+      setCaseType('slipcase');
+    }
     setIsDirty(prev => prev ? prev : true);
   };
 
@@ -218,8 +233,12 @@ export default function AddTapeScreen({ route, navigation }) {
     setShowCoverOptions(false);
     if (textureMap?.front) {
       try {
+        const activeModelId = textureMap.modelId || modelId;
+        const model = getModel(activeModelId);
+        const [outW, outH] = model.faces.front.out;
+
         // Extract and rectify the front cover using the native warp module
-        const result = await warpQuad(textureMap.front.uri, textureMap.front.corners, 1030, 1870, false);
+        const result = await warpQuad(textureMap.front.uri, textureMap.front.corners, outW, outH, false);
         if (result && result.uri) {
           setCoverPhoto(result.uri);
           setIsDirty(prev => prev ? prev : true);
@@ -246,6 +265,8 @@ export default function AddTapeScreen({ route, navigation }) {
       title,
       year,
       format,
+      caseType,
+      modelId,
       notes,
       barcode,
       tmdbId,
@@ -330,6 +351,8 @@ export default function AddTapeScreen({ route, navigation }) {
     performSave();
   };
 
+  const currentCaseTypes = getCaseTypes(format);
+
   return (
     <>
       <KeyboardAwareScrollView
@@ -372,17 +395,39 @@ export default function AddTapeScreen({ route, navigation }) {
               <TouchableOpacity
                 key={fmt}
                 style={[styles.formatChip, format === fmt && styles.formatChipActive]}
-                onPress={() => {
-                  setFormat(fmt);
-                  setIsDirty(prev => prev ? prev : true);
-                }}
+                onPress={() => handleFormatChange(fmt)}
               >
                 <Text style={[styles.formatChipText, format === fmt && styles.formatChipTextActive]}>{fmt}</Text>
               </TouchableOpacity>
             ))}
           </View>
         ) : (
-          <TextInput style={styles.input} placeholder="e.g., VHS, DVD, Betamax" value={format} onChangeText={handleChange(setFormat)} />
+          <TextInput style={styles.input} placeholder="e.g., VHS, DVD, Betamax" value={format} onChangeText={(val) => {
+             setFormat(val);
+             const types = getCaseTypes(val);
+             if (types && !types.find(t => t.id === caseType)) setCaseType(types[0].id);
+             setIsDirty(prev => prev ? prev : true);
+          }} />
+        )}
+
+        {currentCaseTypes && (
+          <>
+            <Text style={styles.label}>Case Type</Text>
+            <View style={styles.formatChipsContainer}>
+              {currentCaseTypes.map((ct) => (
+                <TouchableOpacity
+                  key={ct.id}
+                  style={[styles.formatChip, caseType === ct.id && styles.formatChipActive]}
+                  onPress={() => {
+                    setCaseType(ct.id);
+                    setIsDirty(prev => prev ? prev : true);
+                  }}
+                >
+                  <Text style={[styles.formatChipText, caseType === ct.id && styles.formatChipTextActive]}>{ct.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
         )}
 
         <Text style={styles.label}>Edition</Text>
@@ -465,7 +510,7 @@ export default function AddTapeScreen({ route, navigation }) {
 
         <TouchableOpacity 
           style={styles.scan3DButton} 
-          onPress={() => navigation.navigate('ReelScan', { returnTo: 'AddTape' })}
+          onPress={() => navigation.navigate('ReelScan', { returnTo: 'AddTape', modelId })}
         >
           <Ionicons name="cube-outline" size={24} color="#e07a5f" />
           <Text style={styles.scan3DButtonText}>
@@ -478,7 +523,7 @@ export default function AddTapeScreen({ route, navigation }) {
             <Text style={styles.scanStatus}>
               <Ionicons name="checkmark-circle" size={16} color="#4CAF50" /> 3D scan captured!
             </Text>
-            <Tape3DPreview textureMap={textureMap} />
+            <Tape3DPreview textureMap={textureMap} modelId={textureMap?.modelId || modelId} />
           </>
         )}
 
@@ -708,4 +753,4 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#ffffff'
   }
-});
+}); 

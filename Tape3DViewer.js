@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -16,34 +16,18 @@ import {
 
 import * as THREE from 'three';
 import { warpQuad } from './modules/quad-detect';
-
-const VHS_W = 1.03;
-const VHS_H = 1.87;
-const VHS_D = 0.25;
-
-// Small offset so the texture planes sit just outside the solid VHS body.
-// This eliminates z-fighting while remaining visually flush.
-const FACE_EPS = 0.0015;
+import { getFaceConfigs, getModel } from './mediaModels';
 
 // Native warp produces the image in normal Android Bitmap orientation.
 // EXGL does not reliably honor WebGL's texture flip flag, so we explicitly
 // flip V in the Three.js UV transform below instead of depending on EXGL.
 const WARP_FLIP_V = false;
 
-// Physical face output dimensions.
-// Order:
-// right, left, top, bottom, front, back
-export const FACE_CONFIGS = [
-  { key: 'front', width: VHS_W, height: VHS_H, outW: 1030, outH: 1870, position: [0, 0, VHS_D / 2 + FACE_EPS], rotation: [0, 0, 0], roughness: 0.38 },
-  { key: 'back', width: VHS_W, height: VHS_H, outW: 1030, outH: 1870, position: [0, 0, -(VHS_D / 2 + FACE_EPS)], rotation: [0, Math.PI, 0], roughness: 0.38 },
-  { key: 'right', width: VHS_D, height: VHS_H, outW: 250, outH: 1870, position: [VHS_W / 2 + FACE_EPS, 0, 0], rotation: [0, Math.PI / 2, 0], roughness: 0.42 },
-  { key: 'left', width: VHS_D, height: VHS_H, outW: 250, outH: 1870, position: [-(VHS_W / 2 + FACE_EPS), 0, 0], rotation: [0, -Math.PI / 2, 0], roughness: 0.42 },
-  { key: 'top', width: VHS_W, height: VHS_D, outW: 1030, outH: 250, position: [0, VHS_H / 2 + FACE_EPS, 0], rotation: [-Math.PI / 2, 0, 0], roughness: 0.5 },
-  { key: 'bottom', width: VHS_W, height: VHS_D, outW: 1030, outH: 250, position: [0, -(VHS_H / 2 + FACE_EPS), 0], rotation: [Math.PI / 2, 0, 0], roughness: 0.5 },
-];
-
 const warpCache = new Map();
 const EMPTY_TEXTURE_MAP = {};
+
+// Legacy export for components not yet migrated to modelId (e.g. GuideBox3D)
+export const FACE_CONFIGS = getFaceConfigs('vhs');
 
 function faceUrl(face) {
   if (!face) return null;
@@ -153,7 +137,7 @@ function getWarpedFaceUrl(face, config) {
       warpQuad(rawUrl, corners, config.outW, config.outH, WARP_FLIP_V)
         .then(result => result?.uri || null)
         .catch(error => {
-          console.error(`[Tape3D] ${config.key}: warp failed`, error);
+          console.error(`[Media3D] ${config.key}: warp failed`, error);
           return null;
         })
     );
@@ -161,15 +145,16 @@ function getWarpedFaceUrl(face, config) {
   return warpCache.get(cacheKey);
 }
 
-function ResolvedFaces({ textureMap }) {
-  const sourceKey = FACE_CONFIGS.map(config => textureSourceKey(textureMap?.[config.key])).join('::');
+function ResolvedFaces({ textureMap, modelId }) {
+  const configs = useMemo(() => getFaceConfigs(modelId), [modelId]);
+  const sourceKey = configs.map(config => textureSourceKey(textureMap?.[config.key])).join('::');
   const [faces, setFaces] = useState(null);
 
   useEffect(() => {
     let alive = true;
     setFaces(null);
 
-    Promise.all(FACE_CONFIGS.map(async config => ({
+    Promise.all(configs.map(async config => ({
       config,
       url: await getWarpedFaceUrl(textureMap?.[config.key], config),
     }))).then(resolved => {
@@ -182,10 +167,10 @@ function ResolvedFaces({ textureMap }) {
     return () => {
       alive = false;
     };
-  }, [sourceKey]);
+  }, [sourceKey, configs]);
 
   if (!faces) {
-    return FACE_CONFIGS.map(config => (
+    return configs.map(config => (
       <FacePlane key={config.key} config={config} isPlaceholder />
     ));
   }
@@ -194,7 +179,7 @@ function ResolvedFaces({ textureMap }) {
   return (
     <>
       {faces.length > 0 && <LoadedFaces faces={faces} />}
-      {FACE_CONFIGS.filter(config => !loadedKeys.has(config.key)).map(config => (
+      {configs.filter(config => !loadedKeys.has(config.key)).map(config => (
         <FacePlane key={config.key} config={config} />
       ))}
     </>
@@ -202,7 +187,7 @@ function ResolvedFaces({ textureMap }) {
 }
 
 /**
- * A rigid physical VHS body.
+ * A rigid physical media body.
  *
  * The box itself is deliberately kept untextured.
  * Six explicit planes sit exactly on its six surfaces and carry the
@@ -210,15 +195,16 @@ function ResolvedFaces({ textureMap }) {
  *
  * This avoids relying on THREE.BoxGeometry's face-specific UV layout.
  */
-export function VHSTape({ textureMap }) {
+export function VHSTape({ textureMap, modelId = 'vhs' }) {
   const map = textureMap || EMPTY_TEXTURE_MAP;
+  const dims = getModel(modelId).dims;
 
   return (
     <group>
-      {/* Solid physical VHS body */}
+      {/* Solid physical body */}
       <mesh>
         <boxGeometry
-          args={[VHS_W, VHS_H, VHS_D]}
+          args={[dims.w, dims.h, dims.d]}
         />
 
         <meshStandardMaterial
@@ -228,7 +214,7 @@ export function VHSTape({ textureMap }) {
         />
       </mesh>
 
-      <ResolvedFaces textureMap={map} />
+      <ResolvedFaces textureMap={map} modelId={modelId} />
     </group>
   );
 }
@@ -254,12 +240,26 @@ function Loader() {
 
 export default function Tape3DViewer({
   textureMap,
+  modelId = 'vhs',
 }) {
+  // Borrowing the exact camera math from Tape3DPreview (which you noted was perfect)
+  // so the Fullscreen Viewer frames the media identically to the Add/Edit preview.
+  const cameraParams = useMemo(() => {
+    const dims = getModel(modelId).dims;
+    const maxDim = Math.max(dims.w, dims.h, dims.d);
+    const z = Math.max(3.5, maxDim * 1.87);
+    return {
+      z: z,
+      minDist: z * 0.5,
+      maxDist: z * 2.5,
+    };
+  }, [modelId]);
+
   return (
     <View style={styles.container}>
       <Canvas
         camera={{
-          position: [0, 0, 3.2],
+          position: [0, 0, cameraParams.z],
           fov: 50,
         }}
         style={styles.canvas}
@@ -283,7 +283,7 @@ export default function Tape3DViewer({
         />
 
         <Suspense fallback={null}>
-          <VHSTape textureMap={textureMap} />
+          <VHSTape textureMap={textureMap} modelId={modelId} />
         </Suspense>
 
         <OrbitControls
@@ -295,8 +295,8 @@ export default function Tape3DViewer({
           rotateSpeed={2.0}
           zoomSpeed={1.5}
           dampingFactor={0.05}
-          minDistance={1.5}
-          maxDistance={8}
+          minDistance={cameraParams.minDist}
+          maxDistance={cameraParams.maxDist}
         />
       </Canvas>
 

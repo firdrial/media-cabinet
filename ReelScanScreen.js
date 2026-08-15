@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions, ActivityIndicator, Image, PanResponder, Alert } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,6 +7,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { detectQuad, warpQuad } from './modules/quad-detect';
 import GuideBox3D from './GuideBox3D';
+import { getScanSteps, getWarpOutputSizes } from './mediaModels';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -15,24 +16,6 @@ const REFINE_AREA_H = SCREEN_HEIGHT * 0.62;
 const QW = (SCREEN_WIDTH - GRID_GAP) / 2;
 const QH = (REFINE_AREA_H - GRID_GAP) / 2;
 const ZOOM_LEVELS = [2, 5, 10];
-
-const SCAN_STEPS = [
-  { key: 'front', label: 'Front Cover', w: 103, h: 187, instructions: 'Position the FRONT cover inside the blue box.' },
-  { key: 'left', label: 'Left Spine', w: 25, h: 187, instructions: 'Position the LEFT SPINE inside the blue box.' },
-  { key: 'back', label: 'Back Cover', w: 103, h: 187, instructions: 'Position the BACK cover inside the blue box.' },
-  { key: 'right', label: 'Right Spine', w: 25, h: 187, instructions: 'Position the RIGHT SPINE inside the blue box.' },
-  { key: 'top', label: 'Top Flap', w: 103, h: 25, instructions: 'Position the TOP FLAP inside the blue box.' },
-  { key: 'bottom', label: 'Tape Bottom', w: 103, h: 25, instructions: 'Position the TAPE BOTTOM inside the blue box.' },
-];
-
-const WARP_OUTPUT_SIZES = {
-  front: [1030, 1870],
-  back: [1030, 1870],
-  left: [250, 1870],
-  right: [250, 1870],
-  top: [1030, 250],
-  bottom: [1030, 250],
-};
 
 function orderCorners(pts) {
   const sum = (p) => p.x + p.y;
@@ -126,6 +109,10 @@ function CornerQuadrant({ uri, imgW, imgH, anchor, corners, scale, qIndex, respo
 }
 
 export default function ReelScanScreen({ navigation, route }) {
+  const modelId = route.params?.modelId || 'vhs';
+  const SCAN_STEPS = useMemo(() => getScanSteps(modelId), [modelId]);
+  const WARP_OUTPUT_SIZES = useMemo(() => getWarpOutputSizes(modelId), [modelId]);
+
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef(null);
   const guideBoxRef = useRef(null);
@@ -441,6 +428,10 @@ export default function ReelScanScreen({ navigation, route }) {
           isWarped,
         },
       };
+      
+      // Attach modelId to the textureMap so downstream screens know which model to render
+      const finalTextureMap = { ...updatedImages, modelId };
+
       setCapturedImages(updatedImages);
 
       reviewRef.current = null;
@@ -453,12 +444,13 @@ export default function ReelScanScreen({ navigation, route }) {
       } else {
         const returnTo = route.params?.returnTo;
         if (returnTo) {
-          await AsyncStorage.setItem('pending_texture_map', JSON.stringify(updatedImages));
+          await AsyncStorage.setItem('pending_texture_map', JSON.stringify(finalTextureMap));
           navigation.goBack();
         } else {
           navigation.replace('Tape3DViewer', {
-            textureMap: updatedImages,
+            textureMap: finalTextureMap,
             title: 'My 3D Scan',
+            modelId,
           });
         }
       }
@@ -609,6 +601,7 @@ export default function ReelScanScreen({ navigation, route }) {
 
         <View style={styles.guideContainer}>
           <GuideBox3D
+            modelId={modelId}
             stepKey={currentStep.key}
             fromKey={prevStepKey}
             captured={capturedImages}
@@ -654,13 +647,12 @@ const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'transparent', justifyContent: 'space-between' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 50 },
   backBtn: { padding: 5 },
-  closeBtn: { padding: 5 }, // Matches backBtn padding for perfect alignment
+  closeBtn: { padding: 5 },
   stepIndicator: { alignItems: 'center' },
   stepText: { color: '#e07a5f', fontSize: 14, fontWeight: 'bold' },
   labelText: { color: '#fff', fontSize: 20, fontWeight: 'bold', marginTop: 4 },
   guideContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   guideBoxAnchor: { backgroundColor: 'transparent' },
-  // Moved out of guideContainer, reduced font size, added padding for clean separation
   instructionsWrap: { alignItems: 'center', paddingVertical: 12 },
   instructions: { color: '#fff', fontSize: 14, textAlign: 'center', backgroundColor: 'rgba(0,0,0,0.6)', paddingVertical: 6, paddingHorizontal: 16, borderRadius: 20, overflow: 'hidden' },
   controls: { alignItems: 'center', paddingBottom: 40 },
@@ -672,7 +664,7 @@ const styles = StyleSheet.create({
   refineHeader: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 20, paddingTop: 50 },
   refineSide: { width: 40 },
   refineBackBtn: { padding: 5, marginTop: 2 },
-  refineCloseBtn: { padding: 5, marginTop: 2 }, // Matches refineBackBtn padding
+  refineCloseBtn: { padding: 5, marginTop: 2 },
   refineTitleWrap: { flex: 1, alignItems: 'center' },
   refineTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
   refineStep: { color: '#888', fontSize: 13, marginTop: 2 },

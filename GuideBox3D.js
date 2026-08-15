@@ -3,7 +3,7 @@ import { View, StyleSheet } from 'react-native';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { useTexture } from '@react-three/drei';
 import * as THREE from 'three';
-import { FACE_CONFIGS } from './Tape3DViewer';
+import { getFaceConfigs } from './mediaModels';
 
 const DURATION = 1.2;
 const BORDER_PX = 3;
@@ -17,9 +17,6 @@ const POSES = {
   top:    { rx: Math.PI / 2,    ry: 2 * Math.PI },
   bottom: { rx: -Math.PI / 2,   ry: 2 * Math.PI },
 };
-
-const FACE_MAP = {};
-FACE_CONFIGS.forEach((c) => { FACE_MAP[c.key] = c; });
 
 const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
@@ -102,10 +99,17 @@ function GuideFace({ config, material, url }) {
   );
 }
 
-function AnimatedBox({ stepKey, fromKey, captured, guideWidth, guideHeight }) {
+function AnimatedBox({ stepKey, fromKey, captured, guideWidth, guideHeight, modelId = 'vhs' }) {
   const group = useRef();
   const propsRef = useRef();
   propsRef.current = { stepKey, guideWidth, guideHeight };
+
+  const faceConfigs = useMemo(() => getFaceConfigs(modelId), [modelId]);
+  const faceMap = useMemo(() => {
+    const map = {};
+    faceConfigs.forEach((c) => { map[c.key] = c; });
+    return map;
+  }, [faceConfigs]);
 
   const initPose = POSES[fromKey] || POSES[stepKey];
   const curRef = useRef({ rx: initPose.rx, ry: initPose.ry, s: 0 });
@@ -113,9 +117,10 @@ function AnimatedBox({ stepKey, fromKey, captured, guideWidth, guideHeight }) {
 
   const materials = useMemo(() => {
     const m = {};
-    FACE_CONFIGS.forEach((c) => { m[c.key] = makeMaterial(); });
+    faceConfigs.forEach((c) => { m[c.key] = makeMaterial(); });
     return m;
-  }, []);
+  }, [faceConfigs]);
+  
   useEffect(() => () => Object.values(materials).forEach((m) => m.dispose()), [materials]);
 
   useEffect(() => {
@@ -135,7 +140,11 @@ function AnimatedBox({ stepKey, fromKey, captured, guideWidth, guideHeight }) {
     const proj = 100;
 
     const { stepKey: key, guideWidth: gw, guideHeight: gh } = propsRef.current;
-    const cfg = FACE_MAP[key];
+    const cfg = faceMap[key];
+    
+    // Safety check in case a model doesn't define this specific face key
+    if (!cfg) return; 
+    
     const sTarget = Math.min(gw / (cfg.width * proj), gh / (cfg.height * proj));
 
     const a = animRef.current;
@@ -158,17 +167,19 @@ function AnimatedBox({ stepKey, fromKey, captured, guideWidth, guideHeight }) {
     group.current.rotation.set(curRef.current.rx, curRef.current.ry, 0);
     group.current.scale.setScalar(curRef.current.s);
 
-    FACE_CONFIGS.forEach((c) => {
-      materials[c.key].uniforms.uFacePx.value.set(
-        c.width * curRef.current.s * proj,
-        c.height * curRef.current.s * proj
-      );
+    faceConfigs.forEach((c) => {
+      if (materials[c.key]) {
+        materials[c.key].uniforms.uFacePx.value.set(
+          c.width * curRef.current.s * proj,
+          c.height * curRef.current.s * proj
+        );
+      }
     });
   });
 
   return (
     <group ref={group}>
-      {FACE_CONFIGS.map((cfg) => (
+      {faceConfigs.map((cfg) => (
         <GuideFace
           key={cfg.key}
           config={cfg}
