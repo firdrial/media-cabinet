@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -54,6 +54,9 @@ export default function AddTapeScreen({ route, navigation }) {
 
   // Track unsaved changes
   const [isDirty, setIsDirty] = useState(false);
+  
+  // Ref to bypass preventRemove alert during active save operations
+  const isSavingRef = useRef(false);
 
   const handleChange = (setter) => (value) => {
     setter(value);
@@ -62,6 +65,12 @@ export default function AddTapeScreen({ route, navigation }) {
 
   // Prevent user from leaving if there are unsaved changes
   usePreventRemove(isDirty, ({ data }) => {
+    // If we are actively saving, bypass the warning and let the navigation proceed
+    if (isSavingRef.current) {
+      navigation.dispatch(data.action);
+      return;
+    }
+
     Alert.alert(
       'Discard changes?',
       'You have unsaved changes. Are you sure you want to discard them and go back?',
@@ -70,7 +79,10 @@ export default function AddTapeScreen({ route, navigation }) {
         {
           text: 'Discard',
           style: 'destructive',
-          onPress: () => navigation.dispatch(data.action),
+          onPress: () => {
+            isSavingRef.current = true;
+            navigation.dispatch(data.action);
+          },
         },
       ]
     );
@@ -257,12 +269,17 @@ export default function AddTapeScreen({ route, navigation }) {
 
     try {
       await saveTape(tapeData);
+      
+      // Mark as saving to bypass the usePreventRemove alert
+      isSavingRef.current = true;
       setIsDirty(false); // Clear dirty state to allow navigation away
+      
       Alert.alert('Success!', `"${title}" has been saved!`);
       
       navigation.replace('TapeDetail', { tape: tapeData, returnToCollection });
       
     } catch (error) {
+      isSavingRef.current = false; // Reset on failure
       console.error('Save error:', error);
       Alert.alert('Error', 'Failed to save the item.');
     }
