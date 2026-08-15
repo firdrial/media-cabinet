@@ -5,11 +5,11 @@ import {
   ScrollView,
   TouchableOpacity,
   TouchableWithoutFeedback,
+  PanResponder,
   Text,
   Dimensions,
 } from 'react-native';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { VHSTape } from './Tape3DViewer';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,13 +35,21 @@ const DEFAULT_CAMERA_Z = 5;
 const CAMERA_FOLLOW_SPEED = 16;
 
 // Moved further back from the camera (which is at z=5) to make the tape visually smaller
-const FOCUS_Z = 1.5; 
+const FOCUS_Z = 1.5;
 // Slowed down for a smoother, less abrupt transition
-const ANIMATION_SPEED = 0.06; 
+const ANIMATION_SPEED = 0.06;
 const DRAG_ROTATION_SPEED = 0.012;
 const MAX_X_ROTATION = Math.PI * 0.48;
 // Slowed down rotation speed
-const FOCUS_ROTATION_SPEED = 0.08; 
+const FOCUS_ROTATION_SPEED = 0.08;
+
+// RN-level hit zone used to capture drag-to-rotate gestures while a tape
+// is focused. Anything outside this centered rectangle (but still on
+// screen) counts as "tap outside" and unfocuses the tape. This is
+// deliberately generous so it comfortably covers the tape regardless of
+// spine/cover orientation.
+const FOCUS_DRAG_ZONE_WIDTH_RATIO = 0.68;
+const FOCUS_DRAG_ZONE_HEIGHT_RATIO = 0.62;
 
 const VIEW_MODE_OPTIONS = [
   { value: 'grid', label: 'Grid View', icon: 'grid-outline' },
@@ -69,39 +77,6 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function readPointerCoords(event) {
-  if (!event) return null;
-
-  const nativeEvent = event.nativeEvent;
-
-  const touch =
-    nativeEvent && Array.isArray(nativeEvent.changedTouches)
-      ? nativeEvent.changedTouches[0]
-      : null;
-
-  const candidates = [
-    [event.clientX, event.clientY],
-    nativeEvent ? [nativeEvent.locationX, nativeEvent.locationY] : null,
-    nativeEvent ? [nativeEvent.pageX, nativeEvent.pageY] : null,
-    touch ? [touch.locationX, touch.locationY] : null,
-    touch ? [touch.pageX, touch.pageY] : null,
-    event.pointer
-      ? [
-          event.pointer.x * SCREEN_WIDTH * 0.5,
-          -event.pointer.y * SCREEN_HEIGHT * 0.5,
-        ]
-      : null,
-  ];
-
-  for (const pair of candidates) {
-    if (pair && isFiniteNumber(pair[0]) && isFiniteNumber(pair[1])) {
-      return { x: pair[0], y: pair[1] };
-    }
-  }
-
-  return null;
-}
-
 /* ============================================================
  * INDIVIDUAL 3D TAPE
  * ============================================================ */
@@ -112,6 +87,7 @@ function TapeOnShelf({
   orientation,
   isFocused,
   cullDistance,
+  dragRotationRef,
 }) {
   const groupRef = useRef(null);
 
@@ -122,14 +98,6 @@ function TapeOnShelf({
   const targetRot = useRef(
     new THREE.Euler(0, orientation === 'spine' ? Math.PI / 2 : 0, 0)
   );
-
-  const manualRotation = useRef({ x: 0, y: 0, z: 0 });
-
-  const dragState = useRef({
-    active: false,
-    lastX: null,
-    lastY: null,
-  });
 
   const wasFocused = useRef(false);
 
@@ -151,11 +119,19 @@ function TapeOnShelf({
 
   /* ----------------------------------------------------------
    * FOCUS TRANSITION
+   *
+   * Rotation while focused is now driven entirely by a shared ref
+   * (dragRotationRef) that's updated by an RN PanResponder in the
+   * parent component, instead of by r3f pointer events on this
+   * mesh. We still reset it here the moment a tape becomes focused.
    * ---------------------------------------------------------- */
 
   useEffect(() => {
     if (isFocused && !wasFocused.current) {
-      manualRotation.current = { x: 0, y: 0, z: 0 };
+      dragRotationRef.current.x = 0;
+      dragRotationRef.current.y = 0;
+      dragRotationRef.current.z = 0;
+
       targetRot.current.set(0, 0, 0);
 
       if (groupRef.current) {
@@ -173,79 +149,7 @@ function TapeOnShelf({
     }
 
     wasFocused.current = isFocused;
-  }, [isFocused, orientation]);
-
-  /* ----------------------------------------------------------
-   * DRAG ROTATION
-   * ---------------------------------------------------------- */
-
-  const handlePointerDown = event => {
-    if (!isFocused) return;
-
-    event.stopPropagation();
-
-    const coords = readPointerCoords(event);
-
-    dragState.current = {
-      active: true,
-      lastX: coords ? coords.x : null,
-      lastY: coords ? coords.y : null,
-    };
-
-    try {
-      event.target.setPointerCapture?.(event.pointerId);
-    } catch (error) {}
-  };
-
-  const handlePointerMove = event => {
-    if (!isFocused || !dragState.current.active) return;
-
-    event.stopPropagation();
-
-    const coords = readPointerCoords(event);
-    if (!coords) return;
-
-    if (
-      !isFiniteNumber(dragState.current.lastX) ||
-      !isFiniteNumber(dragState.current.lastY)
-    ) {
-      dragState.current.lastX = coords.x;
-      dragState.current.lastY = coords.y;
-      return;
-    }
-
-    const deltaX = coords.x - dragState.current.lastX;
-    const deltaY = coords.y - dragState.current.lastY;
-
-    dragState.current.lastX = coords.x;
-    dragState.current.lastY = coords.y;
-
-    if (!isFiniteNumber(deltaX) || !isFiniteNumber(deltaY)) return;
-
-    manualRotation.current.y += deltaX * DRAG_ROTATION_SPEED;
-
-    manualRotation.current.x = clamp(
-      manualRotation.current.x + deltaY * DRAG_ROTATION_SPEED,
-      -MAX_X_ROTATION,
-      MAX_X_ROTATION
-    );
-  };
-
-  const handlePointerUp = event => {
-    if (!isFocused) return;
-
-    event.stopPropagation();
-    dragState.current.active = false;
-
-    try {
-      event.target.releasePointerCapture?.(event.pointerId);
-    } catch (error) {}
-  };
-
-  const handlePointerCancel = event => {
-    event.stopPropagation();
-    dragState.current.active = false;
-  };
+  }, [isFocused, orientation, dragRotationRef]);
 
   /* ----------------------------------------------------------
    * FRAME ANIMATION
@@ -274,14 +178,14 @@ function TapeOnShelf({
     if (isFocused) {
       targetPos.current.set(camera.position.x, 0, FOCUS_Z);
 
-      const m = manualRotation.current;
+      const m = dragRotationRef.current;
 
       if (
         !isFiniteNumber(m.x) ||
         !isFiniteNumber(m.y) ||
         !isFiniteNumber(m.z)
       ) {
-        manualRotation.current = { x: 0, y: 0, z: 0 };
+        dragRotationRef.current = { x: 0, y: 0, z: 0 };
       }
     } else {
       targetPos.current.set(position[0], position[1], position[2]);
@@ -306,7 +210,7 @@ function TapeOnShelf({
 
     /* Rotation */
     const rotTarget = isFocused
-      ? manualRotation.current
+      ? dragRotationRef.current
       : targetRot.current;
 
     if (
@@ -324,19 +228,10 @@ function TapeOnShelf({
     }
   });
 
-  const pointerProps = isFocused
-    ? {
-        onPointerDown: handlePointerDown,
-        onPointerMove: handlePointerMove,
-        onPointerUp: handlePointerUp,
-        onPointerCancel: handlePointerCancel,
-      }
-    : {};
-
   const placeholderWidth = orientation === 'cover' ? VHS_W : VHS_D;
 
   return (
-    <group ref={groupRef} position={position} {...pointerProps}>
+    <group ref={groupRef} position={position}>
       {renderFull || isFocused ? (
         <VHSTape textureMap={tape.textureMap} />
       ) : (
@@ -360,9 +255,8 @@ function ShelfScene({
   scrollXRef,
   snapCameraRef,
   cullDistance,
-  onReturn,
+  dragRotationRef,
 }) {
-  const controlsRef = useRef(null);
   const spacing = getSpacing(orientation);
 
   /*
@@ -370,8 +264,6 @@ function ShelfScene({
    * This prevents React re-renders on every scroll event.
    */
   useFrame(({ camera }, delta) => {
-    const controls = controlsRef.current;
-
     const safeDelta = clamp(
       isFiniteNumber(delta) ? delta : 0.016,
       0.001,
@@ -379,15 +271,9 @@ function ShelfScene({
     );
 
     /*
-     * While focused, let OrbitControls manage zoom behavior.
-     * Do not force the camera back to the scroll position.
+     * While focused, hold the camera steady.
      */
     if (focusedId) {
-      if (controls) {
-        controls.target.set(camera.position.x, 0, 0);
-        controls.update();
-      }
-
       snapCameraRef.current = false;
       return;
     }
@@ -401,12 +287,6 @@ function ShelfScene({
      */
     if (snapCameraRef.current) {
       camera.position.set(targetX, 0, DEFAULT_CAMERA_Z);
-
-      if (controls) {
-        controls.target.set(targetX, 0, 0);
-        controls.update();
-      }
-
       snapCameraRef.current = false;
       return;
     }
@@ -431,19 +311,6 @@ function ShelfScene({
       DEFAULT_CAMERA_Z,
       alpha
     );
-
-    if (controls) {
-      controls.target.x = THREE.MathUtils.lerp(
-        controls.target.x,
-        targetX,
-        alpha
-      );
-
-      controls.target.y = THREE.MathUtils.lerp(controls.target.y, 0, alpha);
-      controls.target.z = THREE.MathUtils.lerp(controls.target.z, 0, alpha);
-
-      controls.update();
-    }
   });
 
   return (
@@ -456,32 +323,6 @@ function ShelfScene({
 
       <pointLight position={[0, 3, 3]} intensity={0.25} distance={12} />
 
-      {/* 
-        Invisible backdrop to reliably catch taps outside the tape.
-        React Native's WebGL implementation sometimes misses "empty space" raycasts.
-        This guarantees that tapping the background registers as an interaction 
-        and plays the reverse animation. 
-      */}
-      <mesh position={[0, 0, -5]} onPointerUp={onReturn}>
-        <planeGeometry args={[200, 200]} />
-        <meshBasicMaterial transparent opacity={0} />
-      </mesh>
-
-      <OrbitControls
-        ref={controlsRef}
-        makeDefault
-        enabled={!!focusedId}
-        enablePan={false}
-        enableZoom={!!focusedId}
-        enableRotate={false}
-        enableDamping
-        dampingFactor={0.08}
-        zoomSpeed={1.25}
-        minDistance={1.5}
-        maxDistance={8}
-        target={[0, 0, 0]}
-      />
-
       {items.map((tape, tapeIndex) => {
         const wx = tapeIndex * spacing;
 
@@ -493,6 +334,7 @@ function ShelfScene({
             orientation={orientation}
             isFocused={focusedId === tape.id}
             cullDistance={cullDistance}
+            dragRotationRef={dragRotationRef}
           />
         );
       })}
@@ -556,6 +398,17 @@ export default function ShelfView3D({
   const scrollXRef = useRef(0);
   const snapCameraRef = useRef(true);
   const scrollViewRef = useRef(null);
+
+  /*
+   * Rotation-while-focused state, shared between the RN PanResponder
+   * below (which owns the actual touch gesture) and TapeOnShelf
+   * (which reads it every frame inside the Canvas). Driving this via
+   * plain RN touch handling instead of r3f pointer events is what
+   * makes both "drag to rotate" and "tap outside to unfocus"
+   * reliable on native.
+   */
+  const dragRotationRef = useRef({ x: 0, y: 0, z: 0 });
+  const dragBaseRotationRef = useRef({ x: 0, y: 0, z: 0 });
 
   const spacing = getSpacing(orientation);
   const spacingPx = spacing * PIXELS_PER_UNIT;
@@ -634,6 +487,37 @@ export default function ShelfView3D({
   const handleReturn = () => setFocusedId(null);
 
   /* ----------------------------------------------------------
+   * DRAG-TO-ROTATE (RN PanResponder)
+   *
+   * Lives entirely outside the Canvas. onPanResponderGrant snapshots
+   * the current rotation so repeated drags within the same focus
+   * session accumulate naturally instead of resetting each time.
+   * ---------------------------------------------------------- */
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => {
+        dragBaseRotationRef.current = { ...dragRotationRef.current };
+      },
+      onPanResponderMove: (_evt, gestureState) => {
+        dragRotationRef.current.y =
+          dragBaseRotationRef.current.y +
+          gestureState.dx * DRAG_ROTATION_SPEED;
+
+        dragRotationRef.current.x = clamp(
+          dragBaseRotationRef.current.x +
+            gestureState.dy * DRAG_ROTATION_SPEED,
+          -MAX_X_ROTATION,
+          MAX_X_ROTATION
+        );
+      },
+    })
+  ).current;
+
+  /* ----------------------------------------------------------
    * VIEW MODE
    * ---------------------------------------------------------- */
 
@@ -645,15 +529,19 @@ export default function ShelfView3D({
     }
   };
 
+  const dragZoneWidth = SCREEN_WIDTH * FOCUS_DRAG_ZONE_WIDTH_RATIO;
+  const dragZoneHeight = SCREEN_HEIGHT * FOCUS_DRAG_ZONE_HEIGHT_RATIO;
+
   return (
     <View style={styles.container}>
       {/* =====================================================
        * 3D CANVAS
+       * Touch handling now lives entirely at the RN level (below),
+       * so the Canvas never needs to intercept pointer events.
        * ===================================================== */}
 
       <Canvas
-        onPointerMissed={handleReturn}
-        pointerEvents={focusedId ? 'auto' : 'none'}
+        pointerEvents="none"
         camera={{
           position: [0, 0, DEFAULT_CAMERA_Z],
           fov: 50,
@@ -673,7 +561,7 @@ export default function ShelfView3D({
           scrollXRef={scrollXRef}
           snapCameraRef={snapCameraRef}
           cullDistance={cullDistance}
-          onReturn={handleReturn}
+          dragRotationRef={dragRotationRef}
         />
       </Canvas>
 
@@ -713,6 +601,32 @@ export default function ShelfView3D({
           contentWidth={contentWidth}
         />
       </ScrollView>
+
+      {/* =====================================================
+       * FOCUS-MODE TOUCH LAYER
+       * Full-screen "tap outside closes" catcher, with a smaller
+       * centered zone on top that captures drag-to-rotate and
+       * therefore never lets those touches reach the outer catcher.
+       * ===================================================== */}
+
+      {focusedId && (
+        <TouchableWithoutFeedback onPress={handleReturn}>
+          <View style={styles.focusOverlay}>
+            <View
+              {...panResponder.panHandlers}
+              style={[
+                styles.focusDragZone,
+                {
+                  width: dragZoneWidth,
+                  height: dragZoneHeight,
+                  left: (SCREEN_WIDTH - dragZoneWidth) / 2,
+                  top: (SCREEN_HEIGHT - dragZoneHeight) / 2,
+                },
+              ]}
+            />
+          </View>
+        </TouchableWithoutFeedback>
+      )}
 
       {/* =====================================================
        * TOP BAR
@@ -835,6 +749,20 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#120c0a',
+  },
+
+  focusOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 15,
+    elevation: 15,
+  },
+
+  focusDragZone: {
+    position: 'absolute',
   },
 
   topBar: {
