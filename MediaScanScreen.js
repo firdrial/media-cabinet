@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, ActivityIndicator, Image, PanResponder, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Dimensions, ActivityIndicator, Image, PanResponder, Alert, StyleSheet } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -8,6 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { detectQuad, warpQuad } from './modules/quad-detect';
 import GuideBox3D from './GuideBox3D';
 import { getScanSteps, getWarpOutputSizes, DEFAULT_MODEL_ID } from './mediaModels';
+import { getTheme, DEFAULT_THEME_ID } from './theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -48,7 +49,7 @@ function isConvexQuadJS(pts) {
   return true;
 }
 
-function DashedLine({ x1, y1, x2, y2 }) {
+function DashedLine({ x1, y1, x2, y2, accentColor }) {
   const dx = x2 - x1;
   const dy = y2 - y1;
   const len = Math.sqrt(dx * dx + dy * dy);
@@ -64,7 +65,7 @@ function DashedLine({ x1, y1, x2, y2 }) {
         width: len,
         height: 0,
         borderTopWidth: 2,
-        borderTopColor: '#22dd55',
+        borderTopColor: accentColor || '#22dd55',
         borderStyle: 'dashed',
         transform: [{ rotate: `${ang}rad` }],
       }}
@@ -72,16 +73,17 @@ function DashedLine({ x1, y1, x2, y2 }) {
   );
 }
 
-function Crosshair({ x, y }) {
+function Crosshair({ x, y, accentColor }) {
+  const color = accentColor || '#ff3b30';
   return (
     <View pointerEvents="none" style={{ position: 'absolute', left: x - 14, top: y - 14, width: 28, height: 28 }}>
-      <View style={{ position: 'absolute', left: 13, top: 0, width: 2, height: 28, backgroundColor: '#ff3b30' }} />
-      <View style={{ position: 'absolute', left: 0, top: 13, width: 28, height: 2, backgroundColor: '#ff3b30' }} />
+      <View style={{ position: 'absolute', left: 13, top: 0, width: 2, height: 28, backgroundColor: color }} />
+      <View style={{ position: 'absolute', left: 0, top: 13, width: 28, height: 2, backgroundColor: color }} />
     </View>
   );
 }
 
-function CornerQuadrant({ uri, imgW, imgH, anchor, corners, scale, qIndex, responder }) {
+function CornerQuadrant({ uri, imgW, imgH, anchor, corners, scale, qIndex, responder, accentColor }) {
   const S = scale;
   const toScreen = (p) => ({ x: QW / 2 + (p.x - anchor.x) * S, y: QH / 2 + (p.y - anchor.y) * S });
   const P = corners.map(toScreen);
@@ -101,9 +103,9 @@ function CornerQuadrant({ uri, imgW, imgH, anchor, corners, scale, qIndex, respo
         }}
       />
       {segments.map(([a, b], i) => (
-        <DashedLine key={i} x1={P[a].x} y1={P[a].y} x2={P[b].x} y2={P[b].y} />
+        <DashedLine key={i} x1={P[a].x} y1={P[a].y} x2={P[b].x} y2={P[b].y} accentColor={accentColor} />
       ))}
-      <Crosshair x={P[qIndex].x} y={P[qIndex].y} />
+      <Crosshair x={P[qIndex].x} y={P[qIndex].y} accentColor={accentColor} />
     </View>
   );
 }
@@ -112,6 +114,26 @@ export default function MediaScanScreen({ navigation, route }) {
   const modelId = route.params?.modelId || DEFAULT_MODEL_ID;
   const SCAN_STEPS = useMemo(() => getScanSteps(modelId), [modelId]);
   const WARP_OUTPUT_SIZES = useMemo(() => getWarpOutputSizes(modelId), [modelId]);
+
+  const [preferences, setPreferences] = useState({ theme: DEFAULT_THEME_ID });
+
+  // Load theme preferences
+  useEffect(() => {
+    const loadPrefs = async () => {
+      try {
+        const prefsJSON = await AsyncStorage.getItem('media_cabinet_preferences');
+        if (prefsJSON) {
+          setPreferences(JSON.parse(prefsJSON));
+        }
+      } catch (e) {
+        console.error('Failed to load prefs', e);
+      }
+    };
+    loadPrefs();
+  }, []);
+
+  const theme = getTheme(preferences.theme);
+  const styles = getStyles(theme);
 
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef(null);
@@ -282,15 +304,7 @@ export default function MediaScanScreen({ navigation, route }) {
         { x: initCx - initW / 2, y: initCy + initH / 2 },
       ].map((p) => clampPoint(p.x, p.y, imgW, imgH));
 
-      console.log("========================================");
-      console.log(`[DEBUG] Scanning: ${currentStep.label}`);
-      console.log(`[DEBUG] Normalized: ${imgW}x${imgH}, k=${k.toFixed(3)}`);
-      console.log(`[DEBUG] Initial quad guess:`, initQuad.map((p) => `(${Math.round(p.x)},${Math.round(p.y)})`).join(' '));
-
       const detectedQuad = await detectCorners(normalized.uri, imgW, imgH, initQuad);
-
-      console.log(`[DEBUG] Detected quad (ordered TL TR BR BL):`, detectedQuad.map((p) => `(${Math.round(p.x)},${Math.round(p.y)})`).join(' '));
-      console.log("========================================");
 
       reviewRef.current = { uri: normalized.uri, imgW, imgH, anchors: detectedQuad };
       setReview({ uri: normalized.uri, imgW, imgH, anchors: detectedQuad });
@@ -371,7 +385,6 @@ export default function MediaScanScreen({ navigation, route }) {
         { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
       );
 
-      // Renamed local directory from 'tape-scans' to 'media-scans'
       const scanDirectory = new Directory(Paths.document, 'media-scans');
       if (!scanDirectory.exists) {
         scanDirectory.create({ intermediates: true, idempotent: true });
@@ -388,11 +401,6 @@ export default function MediaScanScreen({ navigation, route }) {
         x: Math.max(0, Math.min(1, (p.x - originX) / cropW)),
         y: Math.max(0, Math.min(1, (p.y - originY) / cropH)),
       }));
-
-      console.log("========================================");
-      console.log(`[DEBUG] Confirmed ${currentStep.label}: crop ${cropW}x${cropH} @(${originX},${originY})`);
-      console.log(`[DEBUG] Normalized corners:`, cornersNorm.map((p) => `(${p.x.toFixed(3)},${p.y.toFixed(3)})`).join(' '));
-      console.log("========================================");
 
       let textureUri = savedFile.uri;
       let isWarped = false;
@@ -430,7 +438,6 @@ export default function MediaScanScreen({ navigation, route }) {
         },
       };
       
-      // Attach modelId to the textureMap so downstream screens know which model to render
       const finalTextureMap = { ...updatedImages, modelId };
 
       setCapturedImages(updatedImages);
@@ -500,11 +507,7 @@ export default function MediaScanScreen({ navigation, route }) {
     if (!permission) requestPermission();
   }, [permission]);
 
-  useEffect(() => {
-    console.log('[MediaScan] screen v7-onnx mounted');
-  }, []);
-
-  if (!permission) return <View style={styles.center}><ActivityIndicator size="large" color="#e07a5f" /></View>;
+  if (!permission) return <View style={styles.center}><ActivityIndicator size="large" color={theme.accent} /></View>;
   if (!permission.granted) {
     return (
       <View style={styles.center}>
@@ -542,12 +545,12 @@ export default function MediaScanScreen({ navigation, route }) {
 
         <View style={styles.quadGrid}>
           <View style={styles.quadRow}>
-            <CornerQuadrant uri={review.uri} imgW={review.imgW} imgH={review.imgH} anchor={corners[0]} corners={corners} scale={S} qIndex={0} responder={responders[0]} />
-            <CornerQuadrant uri={review.uri} imgW={review.imgW} imgH={review.imgH} anchor={corners[1]} corners={corners} scale={S} qIndex={1} responder={responders[1]} />
+            <CornerQuadrant uri={review.uri} imgW={review.imgW} imgH={review.imgH} anchor={corners[0]} corners={corners} scale={S} qIndex={0} responder={responders[0]} accentColor={theme.accent} />
+            <CornerQuadrant uri={review.uri} imgW={review.imgW} imgH={review.imgH} anchor={corners[1]} corners={corners} scale={S} qIndex={1} responder={responders[1]} accentColor={theme.accent} />
           </View>
           <View style={styles.quadRow}>
-            <CornerQuadrant uri={review.uri} imgW={review.imgW} imgH={review.imgH} anchor={corners[3]} corners={corners} scale={S} qIndex={3} responder={responders[3]} />
-            <CornerQuadrant uri={review.uri} imgW={review.imgW} imgH={review.imgH} anchor={corners[2]} corners={corners} scale={S} qIndex={2} responder={responders[2]} />
+            <CornerQuadrant uri={review.uri} imgW={review.imgW} imgH={review.imgH} anchor={corners[3]} corners={corners} scale={S} qIndex={3} responder={responders[3]} accentColor={theme.accent} />
+            <CornerQuadrant uri={review.uri} imgW={review.imgW} imgH={review.imgH} anchor={corners[2]} corners={corners} scale={S} qIndex={2} responder={responders[2]} accentColor={theme.accent} />
           </View>
         </View>
 
@@ -572,10 +575,10 @@ export default function MediaScanScreen({ navigation, route }) {
 
         <View style={styles.reviewControls}>
           <TouchableOpacity style={styles.retakeBtn} onPress={retake}>
-            <Text style={styles.btnText}>Retake</Text>
+            <Text style={[styles.btnText, { color: '#fff' }]}>Retake</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.confirmBtn} onPress={confirmCrop}>
-            <Text style={styles.btnText}>Next</Text>
+            <Text style={[styles.btnText, { color: theme.onAccent }]}>Next</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -639,18 +642,19 @@ export default function MediaScanScreen({ navigation, route }) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (theme) => ({
+  // Kept #000 for camera/refine UI to ensure high contrast against camera feed and scanned images
   container: { flex: 1, backgroundColor: '#000' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#121212' },
-  permissionText: { color: '#fff', fontSize: 16, marginBottom: 20, paddingHorizontal: 40, textAlign: 'center' },
-  permissionButton: { backgroundColor: '#e07a5f', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8 },
-  permissionButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.background },
+  permissionText: { color: theme.textPrimary, fontSize: 16, marginBottom: 20, paddingHorizontal: 40, textAlign: 'center' },
+  permissionButton: { backgroundColor: theme.accent, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8 },
+  permissionButtonText: { color: theme.onAccent, fontSize: 16, fontWeight: 'bold' },
   overlay: { flex: 1, backgroundColor: 'transparent', justifyContent: 'space-between' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 50 },
   backBtn: { padding: 5 },
   closeBtn: { padding: 5 },
   stepIndicator: { alignItems: 'center' },
-  stepText: { color: '#e07a5f', fontSize: 14, fontWeight: 'bold' },
+  stepText: { color: theme.accent, fontSize: 14, fontWeight: 'bold' },
   labelText: { color: '#fff', fontSize: 20, fontWeight: 'bold', marginTop: 4 },
   guideContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   guideBoxAnchor: { backgroundColor: 'transparent' },
@@ -674,9 +678,9 @@ const styles = StyleSheet.create({
   quadRow: { flexDirection: 'row', justifyContent: 'center', gap: GRID_GAP, marginBottom: GRID_GAP },
   zoomRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 6, marginBottom: 14 },
   zoomBtn: { paddingHorizontal: 18, paddingVertical: 8, borderRadius: 18, backgroundColor: '#3a3a3a' },
-  zoomBtnActive: { backgroundColor: '#ffffff' },
+  zoomBtnActive: { backgroundColor: theme.accent },
   zoomBtnText: { color: '#ddd', fontSize: 14, fontWeight: '600' },
-  zoomBtnTextActive: { color: '#000' },
+  zoomBtnTextActive: { color: theme.onAccent },
   rotateBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#3a3a3a', justifyContent: 'center', alignItems: 'center', marginLeft: 8 },
   reviewControls: {
     flexDirection: 'row',
@@ -685,7 +689,7 @@ const styles = StyleSheet.create({
     gap: 40,
     paddingBottom: 30,
   },
-  retakeBtn: { backgroundColor: '#c8102e', paddingHorizontal: 42, paddingVertical: 15, borderRadius: 30 },
-  confirmBtn: { backgroundColor: '#0aa54c', paddingHorizontal: 42, paddingVertical: 15, borderRadius: 30 },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  retakeBtn: { backgroundColor: '#3a3a3a', paddingHorizontal: 42, paddingVertical: 15, borderRadius: 30 },
+  confirmBtn: { backgroundColor: theme.accent, paddingHorizontal: 42, paddingVertical: 15, borderRadius: 30 },
+  btnText: { fontSize: 16, fontWeight: '600' },
 });

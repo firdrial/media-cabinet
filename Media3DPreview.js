@@ -1,21 +1,41 @@
-import React, { Suspense, useState, useMemo } from 'react';
-import { View, StyleSheet, ActivityIndicator } from 'react-native';
+import React, { Suspense, useState, useMemo, useEffect } from 'react';
+import { View, ActivityIndicator } from 'react-native';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, useProgress } from '@react-three/drei';
 import { MediaItem3D } from './Media3DViewer';
 import { getModel, DEFAULT_MODEL_ID } from './mediaModels';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getTheme, DEFAULT_THEME_ID } from './theme';
 
-function PreviewLoader() {
+function PreviewLoader({ theme, styles }) {
   const { active } = useProgress();
   if (!active) return null;
   return (
     <View style={styles.loadingOverlay}>
-      <ActivityIndicator size="small" color="#e07a5f" />
+      <ActivityIndicator size="small" color={theme.accent} />
     </View>
   );
 }
 
 export default function Media3DPreview({ textureMap, modelId, style }) {
+  const [preferences, setPreferences] = useState({ theme: DEFAULT_THEME_ID });
+
+  // Load theme preferences
+  useEffect(() => {
+    const loadPrefs = async () => {
+      try {
+        const prefsJSON = await AsyncStorage.getItem('media_cabinet_preferences');
+        if (prefsJSON) setPreferences(JSON.parse(prefsJSON));
+      } catch (e) {
+        console.error('Failed to load prefs', e);
+      }
+    };
+    loadPrefs();
+  }, []);
+
+  const theme = getTheme(preferences.theme);
+  const styles = getStyles(theme);
+
   const [isRotating, setIsRotating] = useState(true);
 
   const activeModelId = modelId || textureMap?.modelId || DEFAULT_MODEL_ID;
@@ -39,13 +59,19 @@ export default function Media3DPreview({ textureMap, modelId, style }) {
         gl={{ antialias: true }}
         onPointerMissed={toggleRotation} // Tapping the background toggles rotation
       >
-        <color attach="background" args={['#1e1e1e']} />
+        <color attach="background" args={[theme.cardBackground]} />
         <ambientLight intensity={0.8} />
         <directionalLight position={[5, 5, 5]} intensity={1} />
         <Suspense fallback={null}>
           {/* Tapping the 3D model itself toggles rotation */}
           <group onClick={toggleRotation}>
-            <MediaItem3D textureMap={textureMap} modelId={activeModelId} />
+            <MediaItem3D 
+              textureMap={textureMap} 
+              modelId={activeModelId} 
+              bodyColor={theme.cardBackground}
+              placeholderColor={theme.cardBackground}
+              missingColor={theme.background}
+            />
           </group>
         </Suspense>
         <OrbitControls 
@@ -57,20 +83,20 @@ export default function Media3DPreview({ textureMap, modelId, style }) {
           dampingFactor={0.1}
         />
       </Canvas>
-      <PreviewLoader />
+      <PreviewLoader theme={theme} styles={styles} />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (theme) => ({
   container: {
     width: '100%',
     height: 250,
-    backgroundColor: '#1e1e1e',
+    backgroundColor: theme.cardBackground,
     borderRadius: 12,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#333333',
+    borderColor: theme.cardBorder,
   },
   loadingOverlay: {
     position: 'absolute',

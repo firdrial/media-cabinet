@@ -1,13 +1,15 @@
-import React, { Suspense, useEffect, useMemo, useRef } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { useTexture } from '@react-three/drei';
 import * as THREE from 'three';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getFaceConfigs, DEFAULT_MODEL_ID } from './mediaModels';
+import { getTheme, DEFAULT_THEME_ID } from './theme';
 
 const DURATION = 1.2;
 const BORDER_PX = 3;
-const GUIDE_COLOR = '#00a8ff';
+const DEFAULT_GUIDE_COLOR = '#00a8ff';
 
 const POSES = {
   front:  { rx: 0,              ry: 0 },
@@ -47,7 +49,7 @@ void main() {
   discard;
 }`;
 
-function makeMaterial() {
+function makeMaterial(accentColor = DEFAULT_GUIDE_COLOR) {
   return new THREE.ShaderMaterial({
     side: THREE.FrontSide,
     transparent: true,
@@ -57,7 +59,7 @@ function makeMaterial() {
       uHasMap: { value: 0 },
       uFacePx: { value: new THREE.Vector2(1, 1) },
       uBorderPx: { value: BORDER_PX },
-      uColor: { value: new THREE.Color(GUIDE_COLOR) },
+      uColor: { value: new THREE.Color(accentColor) },
       uFill: { value: 0.1 },
     },
     vertexShader: VERT,
@@ -99,7 +101,7 @@ function GuideFace({ config, material, url }) {
   );
 }
 
-function AnimatedBox({ stepKey, fromKey, captured, guideWidth, guideHeight, modelId = DEFAULT_MODEL_ID }) {
+function AnimatedBox({ stepKey, fromKey, captured, guideWidth, guideHeight, modelId = DEFAULT_MODEL_ID, accentColor }) {
   const group = useRef();
   const propsRef = useRef();
   propsRef.current = { stepKey, guideWidth, guideHeight };
@@ -117,11 +119,19 @@ function AnimatedBox({ stepKey, fromKey, captured, guideWidth, guideHeight, mode
 
   const materials = useMemo(() => {
     const m = {};
-    faceConfigs.forEach((c) => { m[c.key] = makeMaterial(); });
+    faceConfigs.forEach((c) => { m[c.key] = makeMaterial(accentColor); });
     return m;
-  }, [faceConfigs]);
+  }, [faceConfigs, accentColor]);
   
   useEffect(() => () => Object.values(materials).forEach((m) => m.dispose()), [materials]);
+
+  // Update shader uniforms dynamically when the theme accent color changes
+  useEffect(() => {
+    const color = accentColor || DEFAULT_GUIDE_COLOR;
+    Object.values(materials).forEach(m => {
+      m.uniforms.uColor.value.set(color);
+    });
+  }, [accentColor, materials]);
 
   useEffect(() => {
     const to = POSES[stepKey];
@@ -192,6 +202,23 @@ function AnimatedBox({ stepKey, fromKey, captured, guideWidth, guideHeight, mode
 }
 
 export default function GuideBox3D(props) {
+  const [preferences, setPreferences] = useState({ theme: DEFAULT_THEME_ID });
+
+  // Load theme preferences
+  useEffect(() => {
+    const loadPrefs = async () => {
+      try {
+        const prefsJSON = await AsyncStorage.getItem('media_cabinet_preferences');
+        if (prefsJSON) setPreferences(JSON.parse(prefsJSON));
+      } catch (e) {
+        console.error('Failed to load prefs', e);
+      }
+    };
+    loadPrefs();
+  }, []);
+
+  const theme = getTheme(preferences.theme);
+
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill} collapsable={false}>
       <Canvas
@@ -203,7 +230,7 @@ export default function GuideBox3D(props) {
         camera={{ position: [0, 0, 10], zoom: 100 }}
         onCreated={({ gl }) => gl.setClearAlpha(0)}
       >
-        <AnimatedBox {...props} />
+        <AnimatedBox {...props} accentColor={theme.accent} />
       </Canvas>
     </View>
   );

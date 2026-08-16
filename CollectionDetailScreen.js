@@ -3,7 +3,6 @@ import {
   View,
   Text,
   FlatList,
-  StyleSheet,
   TouchableOpacity,
   TouchableWithoutFeedback,
   Modal,
@@ -18,6 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loadItems } from './mediaStorage';
 import ShelfView3D from './ShelfView3D';
 import { resolveModelId, getCategory, MEDIA_CATEGORIES } from './mediaModels';
+import { getTheme, DEFAULT_THEME_ID } from './theme';
 
 const { height } = Dimensions.get('window');
 
@@ -26,7 +26,8 @@ const DEFAULT_PREFERENCES = {
   sortOrder: 'desc',
   filterDecades: [],
   filterGenres: [],
-  filterDirectors: [], // Internally kept as "Directors" for legacy AsyncStorage compatibility
+  filterDirectors: [],
+  theme: DEFAULT_THEME_ID,
 };
 
 /*
@@ -73,6 +74,10 @@ export default function CollectionDetailScreen({ route, navigation }) {
    * ----------------------------------------------------------
    */
   const [preferences, setPreferences] = useState(DEFAULT_PREFERENCES);
+
+  // Load current theme and generate dynamic styles
+  const theme = getTheme(preferences.theme);
+  const styles = getStyles(theme);
 
   /*
    * ----------------------------------------------------------
@@ -367,7 +372,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
             <Ionicons
               name="close-circle"
               size={16}
-              color="#e50914"
+              color={theme.accent}
               style={{ marginLeft: 6 }}
             />
           </TouchableOpacity>
@@ -415,7 +420,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
           ) : (
             // Apply square dimensions for music formats
             <View style={[styles.itemPosterPlaceholder, isMusic && styles.itemPosterMusic]}>
-              <Ionicons name={isMusic ? "musical-notes-outline" : "videocam-outline"} size={24} color="#666666" />
+              <Ionicons name={isMusic ? "musical-notes-outline" : "videocam-outline"} size={24} color={theme.textMuted} />
             </View>
           )}
           <View style={styles.itemInfo}>
@@ -433,7 +438,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
             ) : null}
           </View>
         </View>
-        <Ionicons name="chevron-forward" size={20} color="#666666" />
+        <Ionicons name="chevron-forward" size={20} color={theme.chevron} />
       </TouchableOpacity>
     );
   };
@@ -458,7 +463,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
           {item.format || 'Unknown Format'}
         </Text>
       </View>
-      <Ionicons name="chevron-forward" size={20} color="#666666" />
+      <Ionicons name="chevron-forward" size={20} color={theme.chevron} />
     </TouchableOpacity>
   );
 
@@ -471,7 +476,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
     if (filteredItems.length === 0) {
       return (
         <View style={styles.emptyState}>
-          <Ionicons name="cube-outline" size={64} color="#333333" />
+          <Ionicons name="cube-outline" size={64} color={theme.emptyIcon} />
           <Text style={styles.emptyText}>
             {items.length === 0
               ? 'No items in this collection yet.'
@@ -525,7 +530,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
                   onPress={() => navigation.goBack()}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  <Ionicons name="chevron-back" size={28} color="#ffffff" />
+                  <Ionicons name="chevron-back" size={28} color={theme.textPrimary} />
                 </TouchableOpacity>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                   {/* VIEW MODE DROPDOWN TRIGGER */}
@@ -533,14 +538,14 @@ export default function CollectionDetailScreen({ route, navigation }) {
                     style={styles.sortFilterButton}
                     onPress={() => setShowViewMenu(true)}
                   >
-                    <Ionicons name={getViewModeIcon()} size={24} color="#ffffff" />
+                    <Ionicons name={getViewModeIcon()} size={24} color={theme.textPrimary} />
                   </TouchableOpacity>
                   {/* SORT/FILTER */}
                   <TouchableOpacity
                     style={styles.sortFilterButton}
                     onPress={() => setShowSortFilterMenu(true)}
                   >
-                    <Ionicons name="options-outline" size={24} color="#ffffff" />
+                    <Ionicons name="options-outline" size={24} color={theme.textPrimary} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -558,13 +563,13 @@ export default function CollectionDetailScreen({ route, navigation }) {
               <Ionicons
                 name="search"
                 size={20}
-                color="#888888"
+                color={theme.textMuted}
                 style={styles.searchIcon}
               />
               <TextInput
                 style={styles.searchInput}
                 placeholder="Search items in this collection..."
-                placeholderTextColor="#666666"
+                placeholderTextColor={theme.placeholderText}
                 value={itemSearch}
                 onChangeText={setItemSearch}
               />
@@ -573,7 +578,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
                   onPress={() => setItemSearch('')}
                   style={styles.clearSearch}
                 >
-                  <Ionicons name="close-circle" size={20} color="#888888" />
+                  <Ionicons name="close-circle" size={20} color={theme.textMuted} />
                 </TouchableOpacity>
               )}
           </View>
@@ -591,7 +596,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               activeOpacity={0.8}
             >
-              <Ionicons name="add" size={32} color="#ffffff" />
+              <Ionicons name="add" size={32} color={theme.fabIcon} />
           </TouchableOpacity>
 
           {/* ================================================== */}
@@ -619,7 +624,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
                     <Ionicons
                       name={option.icon}
                       size={20}
-                      color={viewMode === option.value ? '#e50914' : '#ffffff'}
+                      color={viewMode === option.value ? theme.accent : theme.textPrimary}
                     />
                     <Text
                       style={[
@@ -631,7 +636,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
                       {option.label}
                     </Text>
                     {viewMode === option.value && (
-                      <Ionicons name="checkmark" size={18} color="#e50914" />
+                      <Ionicons name="checkmark" size={18} color={theme.accent} />
                     )}
                   </TouchableOpacity>
                 ))}
@@ -673,16 +678,16 @@ export default function CollectionDetailScreen({ route, navigation }) {
                 <View
                   style={[
                     styles.optionIcon,
-                    { backgroundColor: 'rgba(33, 150, 243, 0.15)' },
+                    { backgroundColor: theme.accentSoft },
                   ]}
                 >
-                  <Ionicons name="search" size={24} color="#2196F3" />
+                  <Ionicons name="search" size={24} color={theme.accent} />
                 </View>
                 <View style={styles.optionTextContainer}>
                   <Text style={styles.optionTitle}>Add by Search</Text>
                   <Text style={styles.optionSubtitle}>Search {isMusic ? 'Discogs' : 'TMDB'} by title</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color="#666666" />
+                <Ionicons name="chevron-forward" size={20} color={theme.chevron} />
               </TouchableOpacity>
 
               {/* MANUAL */}
@@ -700,10 +705,10 @@ export default function CollectionDetailScreen({ route, navigation }) {
                 <View
                   style={[
                     styles.optionIcon,
-                    { backgroundColor: 'rgba(76, 175, 80, 0.15)' },
+                    { backgroundColor: theme.accentSoft },
                   ]}
                 >
-                  <Ionicons name="create-outline" size={24} color="#4CAF50" />
+                  <Ionicons name="create-outline" size={24} color={theme.accent} />
                 </View>
                 <View style={styles.optionTextContainer}>
                   <Text style={styles.optionTitle}>Add Manually</Text>
@@ -711,7 +716,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
                     Enter all details by hand
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color="#666666" />
+                <Ionicons name="chevron-forward" size={20} color={theme.chevron} />
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -782,7 +787,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
                   </Text>
                   {preferences.sortBy === 'dateAdded' &&
                     preferences.sortOrder === 'desc' && (
-                      <Ionicons name="checkmark" size={20} color="#e50914" />
+                      <Ionicons name="checkmark" size={20} color={theme.accent} />
                     )}
                 </TouchableOpacity>
 
@@ -814,7 +819,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
                   </Text>
                   {preferences.sortBy === 'dateAdded' &&
                     preferences.sortOrder === 'asc' && (
-                      <Ionicons name="checkmark" size={20} color="#e50914" />
+                      <Ionicons name="checkmark" size={20} color={theme.accent} />
                     )}
                 </TouchableOpacity>
 
@@ -846,7 +851,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
                   </Text>
                   {preferences.sortBy === 'title' &&
                     preferences.sortOrder === 'asc' && (
-                      <Ionicons name="checkmark" size={20} color="#e50914" />
+                      <Ionicons name="checkmark" size={20} color={theme.accent} />
                     )}
                 </TouchableOpacity>
 
@@ -878,7 +883,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
                   </Text>
                   {preferences.sortBy === 'title' &&
                     preferences.sortOrder === 'desc' && (
-                      <Ionicons name="checkmark" size={20} color="#e50914" />
+                      <Ionicons name="checkmark" size={20} color={theme.accent} />
                     )}
                 </TouchableOpacity>
 
@@ -910,7 +915,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
                   </Text>
                   {preferences.sortBy === 'year' &&
                     preferences.sortOrder === 'desc' && (
-                      <Ionicons name="checkmark" size={20} color="#e50914" />
+                      <Ionicons name="checkmark" size={20} color={theme.accent} />
                     )}
                 </TouchableOpacity>
 
@@ -942,7 +947,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
                   </Text>
                   {preferences.sortBy === 'year' &&
                     preferences.sortOrder === 'asc' && (
-                      <Ionicons name="checkmark" size={20} color="#e50914" />
+                      <Ionicons name="checkmark" size={20} color={theme.accent} />
                     )}
                 </TouchableOpacity>
 
@@ -983,7 +988,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
                         {decade}
                       </Text>
                       {(preferences.filterDecades || []).includes(decade) && (
-                        <Ionicons name="checkmark" size={20} color="#e50914" />
+                        <Ionicons name="checkmark" size={20} color={theme.accent} />
                       )}
                     </TouchableOpacity>
                   ))
@@ -1036,7 +1041,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
                         {genre}
                       </Text>
                       {(preferences.filterGenres || []).includes(genre) && (
-                        <Ionicons name="checkmark" size={20} color="#e50914" />
+                        <Ionicons name="checkmark" size={20} color={theme.accent} />
                       )}
                     </TouchableOpacity>
                   ))
@@ -1093,7 +1098,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
                       {(preferences.filterDirectors || []).includes(
                         director
                       ) && (
-                        <Ionicons name="checkmark" size={20} color="#e50914" />
+                        <Ionicons name="checkmark" size={20} color={theme.accent} />
                       )}
                     </TouchableOpacity>
                   ))
@@ -1131,17 +1136,17 @@ export default function CollectionDetailScreen({ route, navigation }) {
  * STYLES
  * ------------------------------------------------------------
  */
-const styles = StyleSheet.create({
+const getStyles = (theme) => ({
   container: {
     flex: 1,
-    backgroundColor: '#121212',
+    backgroundColor: theme.background,
   },
   headerInfo: {
     padding: 20,
     paddingTop: 60,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: theme.headerBackground,
     borderBottomWidth: 1,
-    borderBottomColor: '#333333',
+    borderBottomColor: theme.headerBorder,
   },
   headerRow: {
     flexDirection: 'row',
@@ -1157,45 +1162,45 @@ const styles = StyleSheet.create({
   },
   sortFilterButton: {
     padding: 8,
-    backgroundColor: '#2a2a2a',
+    backgroundColor: theme.chipBackground,
     borderRadius: 8,
   },
   collectionTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#ffffff',
+    color: theme.headerTitle,
     marginBottom: 4,
   },
   collectionTypes: {
     fontSize: 14,
-    color: '#e50914',
+    color: theme.typeText,
     fontWeight: '600',
     marginBottom: 8,
     textTransform: 'uppercase',
   },
   collectionDetails: {
     fontSize: 14,
-    color: '#aaaaaa',
+    color: theme.textSecondary,
   },
   /* SEARCH */
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#2a2a2a',
+    backgroundColor: theme.inputBackground,
     marginHorizontal: 16,
     marginTop: 16,
     marginBottom: 8,
     borderRadius: 8,
     paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: '#333333',
+    borderColor: theme.inputBorder,
   },
   searchIcon: {
     marginRight: 8,
   },
   searchInput: {
     flex: 1,
-    color: '#ffffff',
+    color: theme.inputText,
     fontSize: 15,
     paddingVertical: 10,
   },
@@ -1205,9 +1210,9 @@ const styles = StyleSheet.create({
   /* ACTIVE FILTERS */
   activeFiltersContainer: {
     maxHeight: 50,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: theme.headerBackground,
     borderBottomWidth: 1,
-    borderBottomColor: '#333333',
+    borderBottomColor: theme.headerBorder,
   },
   activeFiltersContent: {
     paddingVertical: 8,
@@ -1218,16 +1223,16 @@ const styles = StyleSheet.create({
   filterChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#2a2a2a',
+    backgroundColor: theme.chipBackground,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
     marginRight: 8,
     borderWidth: 1,
-    borderColor: '#e50914',
+    borderColor: theme.accent,
   },
   filterChipText: {
-    color: '#ffffff',
+    color: theme.textPrimary,
     fontSize: 13,
     fontWeight: '600',
   },
@@ -1235,10 +1240,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
-    backgroundColor: 'rgba(229, 9, 20, 0.15)',
+    backgroundColor: theme.accentSoft,
   },
   clearAllChipText: {
-    color: '#e50914',
+    color: theme.accent,
     fontSize: 13,
     fontWeight: 'bold',
   },
@@ -1258,10 +1263,10 @@ const styles = StyleSheet.create({
     top: 108,
     right: 20,
     minWidth: 170,
-    backgroundColor: '#2a2a2a',
+    backgroundColor: theme.sheetBackground,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#333333',
+    borderColor: theme.sheetBorder,
     overflow: 'hidden',
     zIndex: 999,
     elevation: 999,
@@ -1274,16 +1279,16 @@ const styles = StyleSheet.create({
   },
   viewMenuOptionBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: '#333333',
+    borderBottomColor: theme.sheetBorder,
   },
   viewMenuOptionText: {
     flex: 1,
     marginLeft: 10,
     fontSize: 15,
-    color: '#ffffff',
+    color: theme.textPrimary,
   },
   viewMenuOptionTextActive: {
-    color: '#e50914',
+    color: theme.accent,
     fontWeight: '600',
   },
   /* LIST */
@@ -1292,14 +1297,14 @@ const styles = StyleSheet.create({
   },
   /* GRID */
   itemCard: {
-    backgroundColor: '#1e1e1e',
+    backgroundColor: theme.cardBackground,
     borderRadius: 12,
     padding: 12,
     marginBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#333333',
+    borderColor: theme.cardBorder,
   },
   itemCardContent: {
     flex: 1,
@@ -1311,7 +1316,7 @@ const styles = StyleSheet.create({
     height: 75,
     borderRadius: 6,
     marginRight: 12,
-    backgroundColor: '#2a2a2a',
+    backgroundColor: theme.chipBackground,
   },
   itemPosterMusic: {
     width: 60,
@@ -1322,7 +1327,7 @@ const styles = StyleSheet.create({
     height: 75,
     borderRadius: 6,
     marginRight: 12,
-    backgroundColor: '#2a2a2a',
+    backgroundColor: theme.chipBackground,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1333,29 +1338,29 @@ const styles = StyleSheet.create({
   itemTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#ffffff',
+    color: theme.titleText,
     marginBottom: 4,
   },
   itemFormat: {
     fontSize: 13,
-    color: '#aaaaaa',
+    color: theme.textSecondary,
     marginBottom: 4,
   },
   itemDirector: {
     fontSize: 12,
-    color: '#888888',
+    color: theme.textMuted,
     fontStyle: 'italic',
   },
   /* LIST VIEW */
   listItemCard: {
-    backgroundColor: '#1e1e1e',
+    backgroundColor: theme.cardBackground,
     borderRadius: 12,
     padding: 16,
     marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#333333',
+    borderColor: theme.cardBorder,
   },
   listItemInfo: {
     flex: 1,
@@ -1364,12 +1369,12 @@ const styles = StyleSheet.create({
   listItemTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#ffffff',
+    color: theme.titleText,
     marginBottom: 4,
   },
   listItemMeta: {
     fontSize: 13,
-    color: '#aaaaaa',
+    color: theme.textSecondary,
   },
   /* EMPTY */
   emptyState: {
@@ -1381,13 +1386,13 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#666666',
+    color: theme.textFaint,
     marginTop: 16,
     marginBottom: 8,
   },
   emptySubtext: {
     fontSize: 14,
-    color: '#444444',
+    color: theme.textMuted,
     textAlign: 'center',
   },
   /* FAB */
@@ -1398,7 +1403,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#e50914',
+    backgroundColor: theme.fabBackground,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -1410,22 +1415,22 @@ const styles = StyleSheet.create({
   /* MODALS */
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: theme.backdrop,
     justifyContent: 'flex-end',
   },
   bottomSheetContainer: {
-    backgroundColor: '#1e1e1e',
+    backgroundColor: theme.sheetBackground,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderWidth: 1,
     borderBottomWidth: 0,
-    borderColor: '#333333',
+    borderColor: theme.sheetBorder,
     maxHeight: height * 0.85,
   },
   sheetHandle: {
     width: 40,
     height: 4,
-    backgroundColor: '#444444',
+    backgroundColor: theme.sheetHandle,
     borderRadius: 2,
     alignSelf: 'center',
     marginTop: 15,
@@ -1434,7 +1439,7 @@ const styles = StyleSheet.create({
   sheetTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#ffffff',
+    color: theme.textPrimary,
     textAlign: 'center',
     marginBottom: 10,
     marginHorizontal: 20,
@@ -1453,7 +1458,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#333333',
+    borderBottomColor: theme.sheetBorder,
   },
   optionIcon: {
     width: 48,
@@ -1469,12 +1474,12 @@ const styles = StyleSheet.create({
   optionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#ffffff',
+    color: theme.textPrimary,
     marginBottom: 4,
   },
   optionSubtitle: {
     fontSize: 13,
-    color: '#888888',
+    color: theme.textMuted,
   },
   sheetCancel: {
     marginHorizontal: 20,
@@ -1482,23 +1487,23 @@ const styles = StyleSheet.create({
     marginTop: 10,
     paddingVertical: 16,
     alignItems: 'center',
-    backgroundColor: '#2a2a2a',
+    backgroundColor: theme.chipBackground,
     borderRadius: 12,
   },
   sheetCancelText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#ffffff',
+    color: theme.textPrimary,
   },
   /* SORT/FILTER */
   sectionTitleWrapper: {
     paddingVertical: 8,
-    backgroundColor: '#1e1e1e',
+    backgroundColor: theme.sheetBackground,
   },
   sectionTitle: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#888888',
+    color: theme.textMuted,
     marginTop: 8,
     marginBottom: 8,
     textTransform: 'uppercase',
@@ -1513,33 +1518,33 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 0,
     borderBottomWidth: 1,
-    borderBottomColor: '#333333',
+    borderBottomColor: theme.sheetBorder,
   },
   filterOptionActive: {
-    backgroundColor: 'rgba(229, 9, 20, 0.15)',
-    borderBottomColor: 'rgba(229, 9, 20, 0.3)',
+    backgroundColor: theme.accentSoft,
+    borderBottomColor: theme.accent,
   },
   filterOptionText: {
     fontSize: 16,
-    color: '#ffffff',
+    color: theme.textPrimary,
   },
   filterOptionTextActive: {
-    color: '#ffffff',
+    color: theme.textPrimary,
     fontWeight: '600',
   },
   dividerContainer: {
     height: 32,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#1e1e1e',
+    backgroundColor: theme.sheetBackground,
   },
   dividerLine: {
     height: 1,
     width: '100%',
-    backgroundColor: '#333333',
+    backgroundColor: theme.sheetBorder,
   },
   emptyFilterText: {
-    color: '#666666',
+    color: theme.textFaint,
     fontSize: 14,
     fontStyle: 'italic',
     paddingVertical: 8,

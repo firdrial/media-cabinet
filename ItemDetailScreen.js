@@ -1,16 +1,36 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Image, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, Image, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { deleteItem, saveItem } from './mediaStorage';
 import { useFocusEffect } from '@react-navigation/native';
 import Media3DPreview from './Media3DPreview';
 import { resolveModelId, getCategory, MEDIA_CATEGORIES } from './mediaModels';
+import { getTheme, DEFAULT_THEME_ID } from './theme';
 
 export default function ItemDetailScreen({ route, navigation }) {
   const { item } = route.params;
   const returnToCollection = route.params?.returnToCollection || false;
   const [currentItem, setCurrentItem] = useState(item);
+  const [preferences, setPreferences] = useState({ theme: DEFAULT_THEME_ID });
+
+  // Load theme preferences
+  useEffect(() => {
+    const loadPrefs = async () => {
+      try {
+        const prefsJSON = await AsyncStorage.getItem('media_cabinet_preferences');
+        if (prefsJSON) {
+          setPreferences(JSON.parse(prefsJSON));
+        }
+      } catch (e) {
+        console.error('Failed to load prefs', e);
+      }
+    };
+    loadPrefs();
+  }, []);
+
+  const theme = getTheme(preferences.theme);
+  const styles = getStyles(theme);
 
   // Determine the active 3D model ID. Falls back to resolving from format/caseType
   // for legacy items that were saved before the mediaModels registry existed.
@@ -66,7 +86,6 @@ export default function ItemDetailScreen({ route, navigation }) {
           onPress: async () => {
             try {
               await deleteItem(currentItem.id);
-              
               handleBack();
             } catch (error) {
               Alert.alert('Error', 'Failed to delete the item.');
@@ -160,7 +179,7 @@ export default function ItemDetailScreen({ route, navigation }) {
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
       <View style={styles.header}>
         <TouchableOpacity onPress={handleBack} style={styles.iconButton}>
-          <Ionicons name="arrow-back" size={24} color="#ffffff" />
+          <Ionicons name="arrow-back" size={24} color={theme.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>{currentItem.title}</Text>
         <View style={{ width: 24 }} /> 
@@ -176,7 +195,7 @@ export default function ItemDetailScreen({ route, navigation }) {
               style={styles.overlayButton} 
               onPress={() => navigation.navigate('Media3DViewer', { textureMap: currentItem.textureMap, title: currentItem.title, modelId: activeModelId })}
             >
-              <Ionicons name="expand-outline" size={22} color="#ffffff" />
+              <Ionicons name="expand-outline" size={22} color={theme.textPrimary} />
             </TouchableOpacity>
           </View>
         ) : (
@@ -189,7 +208,7 @@ export default function ItemDetailScreen({ route, navigation }) {
               />
             ) : (
               <View style={[styles.coverPlaceholder, isMusic && styles.coverPlaceholderMusic]}>
-                <Ionicons name={isMusic ? "musical-notes-outline" : "videocam-outline"} size={64} color="#666666" />
+                <Ionicons name={isMusic ? "musical-notes-outline" : "videocam-outline"} size={64} color={theme.textMuted} />
               </View>
             )}
             {/* Fallback button when no 3D scan exists yet */}
@@ -197,7 +216,7 @@ export default function ItemDetailScreen({ route, navigation }) {
               style={styles.scan3DFallbackButton} 
               onPress={() => navigation.navigate('MediaScan', { returnTo: 'ItemDetail', modelId: activeModelId })}
             >
-              <Ionicons name="scan-outline" size={20} color="#ffffff" />
+              <Ionicons name="scan-outline" size={20} color={theme.textPrimary} />
               <Text style={styles.scan3DFallbackButtonText}>Scan 3D Item</Text>
             </TouchableOpacity>
           </>
@@ -234,10 +253,10 @@ export default function ItemDetailScreen({ route, navigation }) {
           ) : null}
 
           <View style={styles.crewGrid}>
-            <DetailItem icon={isMusic ? "mic-outline" : "person-outline"} label={isMusic ? "Artist" : "Director"} value={currentItem.director || 'Unknown'} />
-            <DetailItem icon="create-outline" label={isMusic ? "Producer / Writer" : "Writer"} value={currentItem.writer || 'Unknown'} />
-            <DetailItem icon="calendar-outline" label="Release Date" value={currentItem.releaseDate || 'Unknown'} />
-            <DetailItem icon={isMusic ? "disc-outline" : "business-outline"} label={isMusic ? "Label" : "Distributor"} value={currentItem.distributor || 'Unknown'} />
+            <DetailItem icon={isMusic ? "mic-outline" : "person-outline"} label={isMusic ? "Artist" : "Director"} value={currentItem.director || 'Unknown'} iconColor={theme.accent} styles={styles} />
+            <DetailItem icon="create-outline" label={isMusic ? "Producer / Writer" : "Writer"} value={currentItem.writer || 'Unknown'} iconColor={theme.accent} styles={styles} />
+            <DetailItem icon="calendar-outline" label="Release Date" value={currentItem.releaseDate || 'Unknown'} iconColor={theme.accent} styles={styles} />
+            <DetailItem icon={isMusic ? "disc-outline" : "business-outline"} label={isMusic ? "Label" : "Distributor"} value={currentItem.distributor || 'Unknown'} iconColor={theme.accent} styles={styles} />
           </View>
 
           <View style={styles.divider} />
@@ -280,13 +299,13 @@ export default function ItemDetailScreen({ route, navigation }) {
 
         <View style={styles.actionButtons}>
           <TouchableOpacity style={[styles.actionButton, styles.editButton]} onPress={handleEdit}>
-            <Ionicons name="create-outline" size={20} color="#ffffff" />
-            <Text style={styles.actionButtonText}>Edit</Text>
+            <Ionicons name="create-outline" size={20} color={theme.textPrimary} />
+            <Text style={[styles.actionButtonText, { color: theme.textPrimary }]}>Edit</Text>
           </TouchableOpacity>
           
           <TouchableOpacity style={[styles.actionButton, styles.deleteButton]} onPress={handleDelete}>
-            <Ionicons name="trash-outline" size={20} color="#ffffff" />
-            <Text style={styles.actionButtonText}>Delete</Text>
+            <Ionicons name="trash-outline" size={20} color={theme.onAccent} />
+            <Text style={[styles.actionButtonText, { color: theme.onAccent }]}>Delete</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -294,9 +313,9 @@ export default function ItemDetailScreen({ route, navigation }) {
   );
 }
 
-const DetailItem = ({ icon, label, value }) => (
+const DetailItem = ({ icon, label, value, iconColor, styles }) => (
   <View style={styles.detailItem}>
-    <Ionicons name={icon} size={18} color="#e50914" />
+    <Ionicons name={icon} size={18} color={iconColor} />
     <View style={styles.detailTextContainer}>
       <Text style={styles.detailLabel}>{label}</Text>
       <Text style={styles.detailValue}>{value}</Text>
@@ -304,8 +323,8 @@ const DetailItem = ({ icon, label, value }) => (
   </View>
 );
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212' },
+const getStyles = (theme) => ({
+  container: { flex: 1, backgroundColor: theme.background },
   scrollContent: { paddingBottom: 40 },
   header: { 
     flexDirection: 'row', 
@@ -313,11 +332,11 @@ const styles = StyleSheet.create({
     alignItems: 'center', 
     padding: 20, 
     paddingTop: 60, 
-    backgroundColor: '#1a1a1a',
+    backgroundColor: theme.headerBackground,
     borderBottomWidth: 1,
-    borderBottomColor: '#333333'
+    borderBottomColor: theme.headerBorder
   },
-  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#ffffff', flex: 1, textAlign: 'center' },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: theme.headerTitle, flex: 1, textAlign: 'center' },
   iconButton: { padding: 8 },
   content: { padding: 20, alignItems: 'center' },
   
@@ -327,7 +346,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     borderRadius: 12,
     overflow: 'hidden',
-    backgroundColor: '#1e1e1e',
+    backgroundColor: theme.cardBackground,
   },
   overlayButton: {
     position: 'absolute',
@@ -336,65 +355,65 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    backgroundColor: theme.backdrop,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
+    borderColor: theme.cardBorder,
   },
 
   scan3DFallbackButton: {
     flexDirection: 'row',
-    backgroundColor: '#333333',
+    backgroundColor: theme.chipBackground,
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#444444',
+    borderColor: theme.sheetBorder,
     gap: 8,
     marginBottom: 20,
     width: '100%',
   },
   scan3DFallbackButtonText: {
-    color: '#ffffff',
+    color: theme.textPrimary,
     fontSize: 16,
     fontWeight: 'bold',
   },
 
-  coverImage: { width: 180, height: 270, borderRadius: 12, marginBottom: 20, backgroundColor: '#2a2a2a' },
+  coverImage: { width: 180, height: 270, borderRadius: 12, marginBottom: 20, backgroundColor: theme.chipBackground },
   coverImageMusic: { width: 270, height: 270 }, // Square for albums
-  coverPlaceholder: { width: 180, height: 270, borderRadius: 12, marginBottom: 20, backgroundColor: '#2a2a2a', justifyContent: 'center', alignItems: 'center' },
+  coverPlaceholder: { width: 180, height: 270, borderRadius: 12, marginBottom: 20, backgroundColor: theme.chipBackground, justifyContent: 'center', alignItems: 'center' },
   coverPlaceholderMusic: { width: 270, height: 270 }, // Square for albums
-  infoSection: { width: '100%', backgroundColor: '#1e1e1e', borderRadius: 12, padding: 20, borderWidth: 1, borderColor: '#333333' },
-  mainTitle: { fontSize: 24, fontWeight: 'bold', color: '#ffffff', textAlign: 'center', marginBottom: 4 },
-  subTitle: { fontSize: 15, color: '#aaaaaa', textAlign: 'center', marginBottom: 12 },
-  tagline: { fontSize: 14, color: '#888888', fontStyle: 'italic', textAlign: 'center', marginBottom: 16 },
+  infoSection: { width: '100%', backgroundColor: theme.cardBackground, borderRadius: 12, padding: 20, borderWidth: 1, borderColor: theme.cardBorder },
+  mainTitle: { fontSize: 24, fontWeight: 'bold', color: theme.titleText, textAlign: 'center', marginBottom: 4 },
+  subTitle: { fontSize: 15, color: theme.textSecondary, textAlign: 'center', marginBottom: 12 },
+  tagline: { fontSize: 14, color: theme.textMuted, fontStyle: 'italic', textAlign: 'center', marginBottom: 16 },
   genresContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginBottom: 16 },
-  genreChip: { backgroundColor: 'rgba(229, 9, 20, 0.15)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 },
-  genreText: { color: '#e50914', fontSize: 12, fontWeight: '600' },
-  divider: { height: 1, backgroundColor: '#333333', marginVertical: 16 },
-  sectionLabel: { fontSize: 13, color: '#888888', fontWeight: 'bold', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-  overviewText: { fontSize: 15, color: '#cccccc', lineHeight: 22 },
+  genreChip: { backgroundColor: theme.accentSoft, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 },
+  genreText: { color: theme.accent, fontSize: 12, fontWeight: '600' },
+  divider: { height: 1, backgroundColor: theme.cardBorder, marginVertical: 16 },
+  sectionLabel: { fontSize: 13, color: theme.textMuted, fontWeight: 'bold', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  overviewText: { fontSize: 15, color: theme.textPrimary, lineHeight: 22 },
   crewGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 16 },
   detailItem: { flexDirection: 'row', alignItems: 'center', width: '48%', marginBottom: 12 },
   detailTextContainer: { flex: 1, marginLeft: 8 },
-  detailLabel: { fontSize: 11, color: '#888888', marginBottom: 2 },
-  detailValue: { fontSize: 14, color: '#ffffff', fontWeight: '500' },
+  detailLabel: { fontSize: 11, color: theme.textMuted, marginBottom: 2 },
+  detailValue: { fontSize: 14, color: theme.textPrimary, fontWeight: '500' },
   financialRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   financialItem: { alignItems: 'center', flex: 1 },
-  financialLabel: { fontSize: 12, color: '#888888', marginBottom: 4 },
-  financialValue: { fontSize: 16, color: '#4CAF50', fontWeight: 'bold' },
-  notesText: { fontSize: 15, color: '#cccccc', lineHeight: 22, fontStyle: 'italic' },
+  financialLabel: { fontSize: 12, color: theme.textMuted, marginBottom: 4 },
+  financialValue: { fontSize: 16, color: theme.accent, fontWeight: 'bold' },
+  notesText: { fontSize: 15, color: theme.textPrimary, lineHeight: 22, fontStyle: 'italic' },
   tracklistContainer: {
-    backgroundColor: '#2a2a2a',
+    backgroundColor: theme.inputBackground,
     borderRadius: 8,
     padding: 10,
     borderWidth: 1,
-    borderColor: '#333333',
+    borderColor: theme.cardBorder,
   },
   sideHeader: {
-    color: '#e07a5f',
+    color: theme.accent,
     fontSize: 14,
     fontWeight: 'bold',
     marginTop: 10,
@@ -405,27 +424,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#333333',
+    borderBottomColor: theme.cardBorder,
     alignItems: 'center',
   },
   trackPosition: {
     width: 40,
-    color: '#888888',
+    color: theme.textMuted,
     fontSize: 14,
   },
   trackTitle: {
     flex: 1,
-    color: '#ffffff',
+    color: theme.textPrimary,
     fontSize: 14,
   },
   trackDuration: {
-    color: '#888888',
+    color: theme.textMuted,
     fontSize: 14,
     marginLeft: 10,
   },
   actionButtons: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 16, gap: 16 },
   actionButton: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 16, borderRadius: 12, gap: 8 },
-  editButton: { backgroundColor: '#333333', borderWidth: 1, borderColor: '#444444' },
-  deleteButton: { backgroundColor: '#e50914' },
-  actionButtonText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' }
+  editButton: { backgroundColor: theme.chipBackground, borderWidth: 1, borderColor: theme.sheetBorder },
+  deleteButton: { backgroundColor: theme.accent },
+  actionButtonText: { fontSize: 16, fontWeight: 'bold' }
 });

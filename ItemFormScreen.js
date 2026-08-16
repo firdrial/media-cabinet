@@ -3,7 +3,6 @@ import {
   View, 
   Text, 
   TextInput, 
-  StyleSheet, 
   TouchableOpacity, 
   Alert, 
   Image,
@@ -28,6 +27,7 @@ import {
   getCategory, 
   MEDIA_CATEGORIES 
 } from './mediaModels';
+import { getTheme, DEFAULT_THEME_ID } from './theme';
 
 export default function ItemFormScreen({ route, navigation }) {
   const isEdit = !!route.params?.item;
@@ -36,6 +36,26 @@ export default function ItemFormScreen({ route, navigation }) {
   const collectionId = route.params?.collectionId || null;
   const allowedFormats = route.params?.allowedFormats || null;
   const returnToCollection = route.params?.returnToCollection || false;
+
+  const [preferences, setPreferences] = useState({ theme: DEFAULT_THEME_ID });
+
+  // Load theme preferences
+  useEffect(() => {
+    const loadPrefs = async () => {
+      try {
+        const prefsJSON = await AsyncStorage.getItem('media_cabinet_preferences');
+        if (prefsJSON) {
+          setPreferences(JSON.parse(prefsJSON));
+        }
+      } catch (e) {
+        console.error('Failed to load prefs', e);
+      }
+    };
+    loadPrefs();
+  }, []);
+
+  const theme = getTheme(preferences.theme);
+  const styles = getStyles(theme);
 
   const [title, setTitle] = useState(existingItem?.title || '');
   const [year, setYear] = useState(existingItem?.year || '');
@@ -77,6 +97,7 @@ export default function ItemFormScreen({ route, navigation }) {
 
   const modelId = resolveModelId(format, caseType);
   const category = getCategory(modelId);
+  const isMusic = category === MEDIA_CATEGORIES.MUSIC;
 
   // Track unsaved changes
   const [isDirty, setIsDirty] = useState(false);
@@ -409,7 +430,6 @@ export default function ItemFormScreen({ route, navigation }) {
   };
 
   const currentCaseTypes = getCaseTypes(format);
-  const isMusic = category === MEDIA_CATEGORIES.MUSIC;
 
   return (
     <>
@@ -441,10 +461,10 @@ export default function ItemFormScreen({ route, navigation }) {
 
         <Text style={styles.sectionHeader}>Basic Info</Text>
         <Text style={styles.label}>Title</Text>
-        <TextInput style={styles.input} placeholder="e.g., The Matrix" value={title} onChangeText={handleChange(setTitle)} />
+        <TextInput style={styles.input} placeholder="e.g., The Matrix" placeholderTextColor={theme.placeholderText} value={title} onChangeText={handleChange(setTitle)} />
 
         <Text style={styles.label}>Release Year</Text>
-        <TextInput style={styles.input} placeholder="e.g., 1999" keyboardType="numeric" value={year} onChangeText={handleChange(setYear)} />
+        <TextInput style={styles.input} placeholder="e.g., 1999" placeholderTextColor={theme.placeholderText} keyboardType="numeric" value={year} onChangeText={handleChange(setYear)} />
 
         <Text style={styles.label}>Format</Text>
         {allowedFormats ? (
@@ -460,7 +480,7 @@ export default function ItemFormScreen({ route, navigation }) {
             ))}
           </View>
         ) : (
-          <TextInput style={styles.input} placeholder="e.g., VHS, CD, Vinyl" value={format} onChangeText={(val) => {
+          <TextInput style={styles.input} placeholder="e.g., VHS, CD, Vinyl" placeholderTextColor={theme.placeholderText} value={format} onChangeText={(val) => {
              setFormat(val);
              const types = getCaseTypes(val);
              if (types && !types.find(t => t.id === caseType)) setCaseType(types[0].id);
@@ -489,50 +509,51 @@ export default function ItemFormScreen({ route, navigation }) {
         )}
 
         <Text style={styles.label}>Edition</Text>
-        <TextInput style={styles.input} placeholder="e.g., Collector's Edition" value={edition} onChangeText={handleChange(setEdition)} />
+        <TextInput style={styles.input} placeholder="e.g., Collector's Edition" placeholderTextColor={theme.placeholderText} value={edition} onChangeText={handleChange(setEdition)} />
 
         <Text style={styles.sectionHeader}>
           {isMusic ? 'Discogs Details' : 'TMDB Details'}
         </Text>
         
         <Text style={styles.label}>Release Date</Text>
-        <TextInput style={styles.input} placeholder="e.g., 1999-10-15" value={releaseDate} onChangeText={handleChange(setReleaseDate)} />
+        <TextInput style={styles.input} placeholder="e.g., 1999-10-15" placeholderTextColor={theme.placeholderText} value={releaseDate} onChangeText={handleChange(setReleaseDate)} />
 
         <Text style={styles.label}>Runtime</Text>
-        <TextInput style={styles.input} placeholder={isMusic ? "e.g., 45:30" : "e.g., 136 min"} value={runtime} onChangeText={handleChange(setRuntime)} />
+        <TextInput style={styles.input} placeholder={isMusic ? "e.g., 45:30" : "e.g., 136 min"} placeholderTextColor={theme.placeholderText} value={runtime} onChangeText={handleChange(setRuntime)} />
 
         <Text style={styles.label}>{isMusic ? 'Record Label(s)' : 'Distributor'}</Text>
-        <TextInput style={styles.input} placeholder={isMusic ? "e.g., RCA, Sub Pop" : "e.g., Warner Bros."} value={distributor} onChangeText={handleChange(setDistributor)} />
+        <TextInput style={styles.input} placeholder={isMusic ? "e.g., RCA, Sub Pop" : "e.g., Warner Bros."} placeholderTextColor={theme.placeholderText} value={distributor} onChangeText={handleChange(setDistributor)} />
 
         <Text style={styles.label}>{isMusic ? 'Catalog #' : 'Tagline'}</Text>
-        <TextInput style={styles.input} placeholder={isMusic ? "e.g., PB 41447" : "e.g., Welcome to the Real World"} value={tagline} onChangeText={handleChange(setTagline)} />
+        <TextInput style={styles.input} placeholder={isMusic ? "e.g., PB 41447" : "e.g., Welcome to the Real World"} placeholderTextColor={theme.placeholderText} value={tagline} onChangeText={handleChange(setTagline)} />
 
         <Text style={styles.label}>Genres (comma separated)</Text>
-        <TextInput style={styles.input} placeholder={isMusic ? "e.g., Rock, Grunge, Synth-pop" : "e.g., Action, Sci-Fi"} value={genres} onChangeText={handleChange(setGenres)} />
+        <TextInput style={styles.input} placeholder={isMusic ? "e.g., Rock, Grunge, Synth-pop" : "e.g., Action, Sci-Fi"} placeholderTextColor={theme.placeholderText} value={genres} onChangeText={handleChange(setGenres)} />
 
         <Text style={styles.label}>{isMusic ? 'Artist(s)' : 'Director'}</Text>
-        <TextInput style={styles.input} placeholder={isMusic ? "e.g., Nirvana" : "e.g., The Wachowskis"} value={director} onChangeText={handleChange(setDirector)} />
+        <TextInput style={styles.input} placeholder={isMusic ? "e.g., Nirvana" : "e.g., The Wachowskis"} placeholderTextColor={theme.placeholderText} value={director} onChangeText={handleChange(setDirector)} />
 
         <Text style={styles.label}>{isMusic ? 'Producer(s) / Writer(s)' : 'Writer'}</Text>
-        <TextInput style={styles.input} placeholder={isMusic ? "e.g., Butch Vig" : "e.g., The Wachowskis"} value={writer} onChangeText={handleChange(setWriter)} />
+        <TextInput style={styles.input} placeholder={isMusic ? "e.g., Butch Vig" : "e.g., The Wachowskis"} placeholderTextColor={theme.placeholderText} value={writer} onChangeText={handleChange(setWriter)} />
 
         {!isMusic && (
           <>
             <Text style={styles.label}>Budget</Text>
-            <TextInput style={styles.input} placeholder="e.g., $63,000,000" value={budget} onChangeText={handleChange(setBudget)} />
+            <TextInput style={styles.input} placeholder="e.g., $63,000,000" placeholderTextColor={theme.placeholderText} value={budget} onChangeText={handleChange(setBudget)} />
 
             <Text style={styles.label}>Revenue</Text>
-            <TextInput style={styles.input} placeholder="e.g., $463,500,000" value={revenue} onChangeText={handleChange(setRevenue)} />
+            <TextInput style={styles.input} placeholder="e.g., $463,500,000" placeholderTextColor={theme.placeholderText} value={revenue} onChangeText={handleChange(setRevenue)} />
           </>
         )}
 
         <Text style={styles.label}>{isMusic ? 'Label(s) / Production' : 'Production Companies (comma separated)'}</Text>
-        <TextInput style={styles.input} placeholder="e.g., Warner Bros., Village Roadshow" value={productionCompanies} onChangeText={handleChange(setProductionCompanies)} />
+        <TextInput style={styles.input} placeholder="e.g., Warner Bros., Village Roadshow" placeholderTextColor={theme.placeholderText} value={productionCompanies} onChangeText={handleChange(setProductionCompanies)} />
 
         <Text style={styles.label}>{isMusic ? 'Release Notes' : 'Plot Overview'}</Text>
         <TextInput 
           style={[styles.input, styles.multiline]} 
           placeholder={isMusic ? "Notes on pressing, matrix runout, etc..." : "Enter plot summary..."} 
+          placeholderTextColor={theme.placeholderText}
           multiline 
           numberOfLines={4}
           value={overview} 
@@ -543,6 +564,7 @@ export default function ItemFormScreen({ route, navigation }) {
         <TextInput 
           style={[styles.input, styles.multiline]} 
           placeholder="Any scratches? Special features?" 
+          placeholderTextColor={theme.placeholderText}
           multiline 
           value={notes} 
           onChangeText={handleChange(setNotes)} 
@@ -573,7 +595,7 @@ export default function ItemFormScreen({ route, navigation }) {
             <Image source={{ uri: coverPhoto }} style={styles.coverPhotoPreview} resizeMode="cover" />
           ) : (
             <View style={styles.photoPlaceholder}>
-              <Ionicons name="image-outline" size={32} color="#666666" />
+              <Ionicons name="image-outline" size={32} color={theme.textMuted} />
               <Text style={styles.photoPlaceholderText}>Tap to choose cover photo</Text>
             </View>
           )}
@@ -583,7 +605,7 @@ export default function ItemFormScreen({ route, navigation }) {
           style={styles.scan3DButton} 
           onPress={() => navigation.navigate('MediaScan', { returnTo: 'AddItem', modelId })}
         >
-          <Ionicons name="cube-outline" size={24} color="#e07a5f" />
+          <Ionicons name="cube-outline" size={24} color={theme.accent} />
           <Text style={styles.scan3DButtonText}>
             {getScanLabel(modelId, !!textureMap)}
           </Text>
@@ -592,7 +614,7 @@ export default function ItemFormScreen({ route, navigation }) {
         {textureMap && (
           <>
             <Text style={styles.scanStatus}>
-              <Ionicons name="checkmark-circle" size={16} color="#4CAF50" /> 3D scan captured!
+              <Ionicons name="checkmark-circle" size={16} color={theme.accent} /> 3D scan captured!
             </Text>
             <Media3DPreview textureMap={textureMap} modelId={textureMap?.modelId || modelId} />
           </>
@@ -618,8 +640,8 @@ export default function ItemFormScreen({ route, navigation }) {
               <Text style={styles.sheetTitle}>Choose Cover Photo</Text>
               
               <TouchableOpacity style={styles.sheetOption} onPress={handlePickFromGallery}>
-                <View style={[styles.optionIcon, { backgroundColor: 'rgba(0, 168, 255, 0.15)' }]}>
-                  <Ionicons name="image-outline" size={24} color="#00a8ff" />
+                <View style={[styles.optionIcon, { backgroundColor: theme.accentSoft }]}>
+                  <Ionicons name="image-outline" size={24} color={theme.accent} />
                 </View>
                 <View style={styles.optionTextContainer}>
                   <Text style={styles.optionTitle}>Upload from Gallery</Text>
@@ -627,8 +649,8 @@ export default function ItemFormScreen({ route, navigation }) {
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.sheetOption} onPress={handleTakePhoto}>
-                <View style={[styles.optionIcon, { backgroundColor: 'rgba(76, 175, 80, 0.15)' }]}>
-                  <Ionicons name="camera-outline" size={24} color="#4CAF50" />
+                <View style={[styles.optionIcon, { backgroundColor: theme.accentSoft }]}>
+                  <Ionicons name="camera-outline" size={24} color={theme.accent} />
                 </View>
                 <View style={styles.optionTextContainer}>
                   <Text style={styles.optionTitle}>Take Photo</Text>
@@ -637,8 +659,8 @@ export default function ItemFormScreen({ route, navigation }) {
 
               {textureMap?.front && (
                 <TouchableOpacity style={styles.sheetOption} onPress={handleUse3DScan}>
-                  <View style={[styles.optionIcon, { backgroundColor: 'rgba(224, 122, 95, 0.15)' }]}>
-                    <Ionicons name="cube-outline" size={24} color="#e07a5f" />
+                  <View style={[styles.optionIcon, { backgroundColor: theme.accentSoft }]}>
+                    <Ionicons name="cube-outline" size={24} color={theme.accent} />
                   </View>
                   <View style={styles.optionTextContainer}>
                     <Text style={styles.optionTitle}>Use 3D Scan Front Cover</Text>
@@ -648,8 +670,8 @@ export default function ItemFormScreen({ route, navigation }) {
 
               {coverPhoto && coverArtUrl && (
                 <TouchableOpacity style={styles.sheetOption} onPress={handleClearCover}>
-                  <View style={[styles.optionIcon, { backgroundColor: 'rgba(229, 9, 20, 0.15)' }]}>
-                    <Ionicons name="trash-outline" size={24} color="#e50914" />
+                  <View style={[styles.optionIcon, { backgroundColor: theme.accentSoft }]}>
+                    <Ionicons name="trash-outline" size={24} color={theme.accent} />
                   </View>
                   <View style={styles.optionTextContainer}>
                     <Text style={styles.optionTitle}>
@@ -670,38 +692,38 @@ export default function ItemFormScreen({ route, navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212' },
+const getStyles = (theme) => ({
+  container: { flex: 1, backgroundColor: theme.background },
   scrollContent: { padding: 20, paddingTop: 60 }, 
-  header: { fontSize: 32, fontWeight: 'bold', color: '#ffffff', marginBottom: 20, textAlign: 'center' },
+  header: { fontSize: 32, fontWeight: 'bold', color: theme.textPrimary, marginBottom: 20, textAlign: 'center' },
   collectionBanner: {
-    backgroundColor: 'rgba(229, 9, 20, 0.15)',
+    backgroundColor: theme.accentSoft,
     padding: 10,
     borderRadius: 8,
     alignItems: 'center',
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: 'rgba(229, 9, 20, 0.3)',
+    borderColor: theme.accent,
   },
   collectionBannerText: {
-    color: '#e50914',
+    color: theme.accent,
     fontSize: 14,
     fontWeight: '600',
   },
-  sectionHeader: { fontSize: 20, fontWeight: 'bold', color: '#e50914', marginTop: 20, marginBottom: 10 },
-  posterPreview: { width: 150, height: 150, borderRadius: 8, alignSelf: 'center', marginBottom: 20, backgroundColor: '#333333' },
-  label: { fontSize: 14, color: '#aaaaaa', marginBottom: 5, marginTop: 15 },
-  input: { backgroundColor: '#1e1e1e', borderColor: '#333333', borderWidth: 1, borderRadius: 8, padding: 15, fontSize: 16, color: '#ffffff' },
+  sectionHeader: { fontSize: 20, fontWeight: 'bold', color: theme.accent, marginTop: 20, marginBottom: 10 },
+  posterPreview: { width: 150, height: 150, borderRadius: 8, alignSelf: 'center', marginBottom: 20, backgroundColor: theme.chipBackground },
+  label: { fontSize: 14, color: theme.textSecondary, marginBottom: 5, marginTop: 15 },
+  input: { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, borderWidth: 1, borderRadius: 8, padding: 15, fontSize: 16, color: theme.inputText },
   multiline: { height: 100, textAlignVertical: 'top' },
-  button: { backgroundColor: '#e50914', padding: 18, borderRadius: 8, marginTop: 30, alignItems: 'center' },
-  buttonText: { color: '#ffffff', fontSize: 18, fontWeight: 'bold' },
+  button: { backgroundColor: theme.accent, padding: 18, borderRadius: 8, marginTop: 30, alignItems: 'center' },
+  buttonText: { color: theme.onAccent, fontSize: 18, fontWeight: 'bold' },
   photoUploader: {
     width: '100%',
     height: 200,
-    backgroundColor: '#1e1e1e',
+    backgroundColor: theme.cardBackground,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#333333',
+    borderColor: theme.cardBorder,
     borderStyle: 'dashed',
     justifyContent: 'center',
     alignItems: 'center',
@@ -710,7 +732,7 @@ const styles = StyleSheet.create({
   },
   coverPhotoPreview: { width: '100%', height: '100%' },
   photoPlaceholder: { justifyContent: 'center', alignItems: 'center' },
-  photoPlaceholderText: { color: '#666666', fontSize: 14, marginTop: 8, fontWeight: '600' },
+  photoPlaceholderText: { color: theme.textMuted, fontSize: 14, marginTop: 8, fontWeight: '600' },
   formatChipsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -719,33 +741,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 20,
-    backgroundColor: '#2a2a2a',
+    backgroundColor: theme.chipBackground,
     marginRight: 8,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#333333',
+    borderColor: theme.chipBorder,
   },
   formatChipActive: {
-    backgroundColor: 'rgba(229, 9, 20, 0.15)',
-    borderColor: '#e50914',
+    backgroundColor: theme.accentSoft,
+    borderColor: theme.accent,
   },
   formatChipText: {
-    color: '#ffffff',
+    color: theme.textPrimary,
     fontSize: 14,
     fontWeight: '600',
   },
   formatChipTextActive: {
-    color: '#e50914',
+    color: theme.accent,
   },
   tracklistContainer: {
-    backgroundColor: '#1e1e1e',
+    backgroundColor: theme.cardBackground,
     borderRadius: 8,
     padding: 10,
     borderWidth: 1,
-    borderColor: '#333333',
+    borderColor: theme.cardBorder,
   },
   sideHeader: {
-    color: '#e07a5f',
+    color: theme.accent,
     fontSize: 14,
     fontWeight: 'bold',
     marginTop: 10,
@@ -756,43 +778,43 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#2a2a2a',
+    borderBottomColor: theme.cardBorder,
     alignItems: 'center',
   },
   trackPosition: {
     width: 40,
-    color: '#888888',
+    color: theme.textMuted,
     fontSize: 14,
   },
   trackTitle: {
     flex: 1,
-    color: '#ffffff',
+    color: theme.textPrimary,
     fontSize: 14,
   },
   trackDuration: {
-    color: '#888888',
+    color: theme.textMuted,
     fontSize: 14,
     marginLeft: 10,
   },
   scan3DButton: {
     flexDirection: 'row',
-    backgroundColor: '#2a2a2a',
+    backgroundColor: theme.chipBackground,
     padding: 18,
     borderRadius: 8,
     marginTop: 20,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#e07a5f',
+    borderColor: theme.accent,
     gap: 10,
   },
   scan3DButtonText: {
-    color: '#e07a5f',
+    color: theme.accent,
     fontSize: 18,
     fontWeight: 'bold',
   },
   scanStatus: {
-    color: '#4CAF50',
+    color: theme.accent,
     fontSize: 14,
     fontWeight: '600',
     marginTop: 10,
@@ -800,21 +822,21 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: { 
     flex: 1, 
-    backgroundColor: 'rgba(0, 0, 0, 0.6)', 
+    backgroundColor: theme.backdrop, 
     justifyContent: 'flex-end' 
   },
   bottomSheetContainer: { 
-    backgroundColor: '#1e1e1e', 
+    backgroundColor: theme.sheetBackground, 
     borderTopLeftRadius: 24, 
     borderTopRightRadius: 24, 
     borderWidth: 1,
     borderBottomWidth: 0,
-    borderColor: '#333333',
+    borderColor: theme.sheetBorder,
   },
   sheetHandle: {
     width: 40,
     height: 4,
-    backgroundColor: '#444444',
+    backgroundColor: theme.sheetHandle,
     borderRadius: 2,
     alignSelf: 'center',
     marginTop: 15,
@@ -823,7 +845,7 @@ const styles = StyleSheet.create({
   sheetTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#ffffff',
+    color: theme.textPrimary,
     textAlign: 'center',
     marginBottom: 10,
     marginHorizontal: 20,
@@ -834,7 +856,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#333333'
+    borderBottomColor: theme.sheetBorder
   },
   optionIcon: {
     width: 48,
@@ -845,19 +867,19 @@ const styles = StyleSheet.create({
     marginRight: 16
   },
   optionTextContainer: { flex: 1 },
-  optionTitle: { fontSize: 16, fontWeight: '600', color: '#ffffff' },
+  optionTitle: { fontSize: 16, fontWeight: '600', color: theme.textPrimary },
   sheetCancel: {
     marginHorizontal: 20,
     marginBottom: 20,
     marginTop: 10,
     paddingVertical: 16,
     alignItems: 'center',
-    backgroundColor: '#2a2a2a',
+    backgroundColor: theme.chipBackground,
     borderRadius: 12
   },
   sheetCancelText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#ffffff'
+    color: theme.textPrimary
   }
 });

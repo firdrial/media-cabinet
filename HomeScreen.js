@@ -3,7 +3,6 @@ import {
   View, 
   Text, 
   FlatList, 
-  StyleSheet, 
   TouchableOpacity, 
   TouchableWithoutFeedback,
   Alert, 
@@ -17,6 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loadItems as loadStoredItems } from './mediaStorage';
+import { getTheme, DEFAULT_THEME_ID, THEME_OPTIONS } from './theme';
 
 const { height } = Dimensions.get('window');
 
@@ -34,7 +34,8 @@ const DEFAULT_PREFERENCES = {
   sortOrder: 'desc',
   filterDecades: [],
   filterGenres: [],
-  filterDirectors: []
+  filterDirectors: [],
+  theme: DEFAULT_THEME_ID
 };
 
 const COLLECTION_TYPES = ['CD', 'VHS', 'DVD', 'Blu-Ray', 'Laserdisc', 'Vinyl Record'];
@@ -60,6 +61,7 @@ export default function HomeScreen({ navigation }) {
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [showSortFilterMenu, setShowSortFilterMenu] = useState(false);
   const [showAddCollection, setShowAddCollection] = useState(false);
+  const [showThemePicker, setShowThemePicker] = useState(false);
   
   const [preferences, setPreferences] = useState(DEFAULT_PREFERENCES);
 
@@ -68,6 +70,10 @@ export default function HomeScreen({ navigation }) {
   const [collDetails, setCollDetails] = useState('');
   const [collTags, setCollTags] = useState('');
   const [editingCollectionId, setEditingCollectionId] = useState(null);
+
+  // Load current theme and generate dynamic styles
+  const theme = getTheme(preferences.theme);
+  const styles = getStyles(theme);
 
   const loadPreferences = async () => {
     try {
@@ -105,6 +111,11 @@ export default function HomeScreen({ navigation }) {
     } catch (error) {
       Alert.alert('Error', 'Failed to save preferences');
     }
+  };
+
+  const handleSelectTheme = (themeId) => {
+    savePreferences({ ...preferences, theme: themeId });
+    setShowThemePicker(false);
   };
 
   const loadItems = async () => {
@@ -339,7 +350,7 @@ export default function HomeScreen({ navigation }) {
         }}
       >
         <View style={styles.collectionIcon}>
-          <Ionicons name={getIconForType(type)} size={24} color="#e50914" />
+          <Ionicons name={getIconForType(type)} size={24} color={theme.iconColor} />
         </View>
         <View style={styles.collectionInfo}>
           <Text style={styles.collectionTitle} numberOfLines={1}>{item.title || 'Untitled'}</Text>
@@ -354,7 +365,7 @@ export default function HomeScreen({ navigation }) {
             </View>
           )}
         </View>
-        <Ionicons name="chevron-forward" size={20} color="#666666" />
+        <Ionicons name="chevron-forward" size={20} color={theme.chevron} />
       </TouchableOpacity>
     );
   };
@@ -372,34 +383,40 @@ export default function HomeScreen({ navigation }) {
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity 
+              style={styles.themeButton}
+              onPress={() => setShowThemePicker(true)}
+            >
+              <Ionicons name="color-palette-outline" size={24} color={theme.textPrimary} />
+            </TouchableOpacity>
+            <TouchableOpacity 
               style={styles.sortFilterButton}
               onPress={() => setShowSortFilterMenu(true)}
             >
-              <Ionicons name="options-outline" size={24} color="#ffffff" />
+              <Ionicons name="options-outline" size={24} color={theme.textPrimary} />
             </TouchableOpacity>
           </View>
         </View>
       </View>
 
       <View style={styles.searchContainer}>
-        <Ionicons name="search" size={20} color="#888888" style={styles.searchIcon} />
+        <Ionicons name="search" size={20} color={theme.textMuted} style={styles.searchIcon} />
         <TextInput 
           style={styles.searchInput}
           placeholder="Search collections by title..."
-          placeholderTextColor="#666666"
+          placeholderTextColor={theme.placeholderText}
           value={collectionSearch}
           onChangeText={setCollectionSearch}
         />
         {collectionSearch.length > 0 && (
           <TouchableOpacity onPress={() => setCollectionSearch('')} style={styles.clearSearch}>
-            <Ionicons name="close-circle" size={20} color="#888888" />
+            <Ionicons name="close-circle" size={20} color={theme.textMuted} />
           </TouchableOpacity>
         )}
       </View>
 
       {filteredCollections.length === 0 ? (
         <View style={styles.emptyState}>
-          <Ionicons name="albums-outline" size={64} color="#333333" />
+          <Ionicons name="albums-outline" size={64} color={theme.emptyIcon} />
           <Text style={styles.emptyText}>
             {collections.length === 0 ? 'No collections yet!' : 'No collections match your search.'}
           </Text>
@@ -423,7 +440,7 @@ export default function HomeScreen({ navigation }) {
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         activeOpacity={0.8}
       >
-        <Ionicons name="add" size={32} color="#ffffff" />
+        <Ionicons name="add" size={32} color={theme.fabIcon} />
       </TouchableOpacity>
 
       {/* Add Menu Bottom Sheet Modal (Collections Only) */}
@@ -447,14 +464,14 @@ export default function HomeScreen({ navigation }) {
                   setTimeout(() => setShowAddCollection(true), 100);
                 }}
               >
-                <View style={[styles.optionIcon, { backgroundColor: 'rgba(156, 39, 176, 0.15)' }]}>
-                  <Ionicons name="albums-outline" size={24} color="#9C27B0" />
+                <View style={[styles.optionIcon, { backgroundColor: theme.accentSoft }]}>
+                  <Ionicons name="albums-outline" size={24} color={theme.accent} />
                 </View>
                 <View style={styles.optionTextContainer}>
                   <Text style={styles.optionTitle}>Add a Collection</Text>
                   <Text style={styles.optionSubtitle}>Create a new media collection</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color="#666666" />
+                <Ionicons name="chevron-forward" size={20} color={theme.chevron} />
               </TouchableOpacity>
 
               <TouchableOpacity 
@@ -476,7 +493,7 @@ export default function HomeScreen({ navigation }) {
         onRequestClose={() => resetAndCloseCollectionModal()}
       >
         <KeyboardAvoidingView 
-          style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.6)', justifyContent: 'flex-end' }} 
+          style={{ flex: 1, backgroundColor: theme.backdrop, justifyContent: 'flex-end' }} 
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <TouchableWithoutFeedback onPress={() => resetAndCloseCollectionModal()}>
@@ -513,7 +530,7 @@ export default function HomeScreen({ navigation }) {
                       value={collTitle} 
                       onChangeText={setCollTitle} 
                       placeholder="e.g., My Media Collection"
-                      placeholderTextColor="#666"
+                      placeholderTextColor={theme.placeholderText}
                     />
 
                     <Text style={styles.inputLabel}>Details (Optional)</Text>
@@ -522,7 +539,7 @@ export default function HomeScreen({ navigation }) {
                       value={collDetails} 
                       onChangeText={setCollDetails} 
                       placeholder="Any additional details..."
-                      placeholderTextColor="#666"
+                      placeholderTextColor={theme.placeholderText}
                       multiline
                       numberOfLines={3}
                     />
@@ -533,7 +550,7 @@ export default function HomeScreen({ navigation }) {
                       value={collTags} 
                       onChangeText={setCollTags} 
                       placeholder="e.g., 80s, Horror, Rare"
-                      placeholderTextColor="#666"
+                      placeholderTextColor={theme.placeholderText}
                     />
 
                     <TouchableOpacity style={styles.saveButton} onPress={saveCollection}>
@@ -577,67 +594,103 @@ export default function HomeScreen({ navigation }) {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+
+      {/* Theme Picker Bottom Sheet Modal */}
+      <Modal
+        visible={showThemePicker}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowThemePicker(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowThemePicker(false)}>
+          <View style={styles.modalBackdrop}>
+            <View style={styles.bottomSheetContainer}>
+              <View style={styles.sheetHandle} />
+              <Text style={styles.sheetTitle}>Choose Theme</Text>
+              <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetScrollContent}>
+                {THEME_OPTIONS.map((opt) => (
+                  <TouchableOpacity 
+                    key={opt.id} 
+                    style={styles.themePickerRow}
+                    onPress={() => handleSelectTheme(opt.id)}
+                  >
+                    {preferences.theme === opt.id ? (
+                      <Ionicons name="checkmark-circle" size={24} color={theme.accent} style={styles.themePickerSelectedIcon} />
+                    ) : (
+                      <Ionicons name="ellipse-outline" size={24} color={theme.textMuted} style={styles.themePickerSelectedIcon} />
+                    )}
+                    <Text style={styles.themePickerLabel}>{opt.label}</Text>
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity style={styles.sheetCancel} onPress={() => setShowThemePicker(false)}>
+                  <Text style={styles.sheetCancelText}>Close</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212' },
-  header: { padding: 20, paddingTop: 60, backgroundColor: '#1a1a1a', borderBottomWidth: 1, borderBottomColor: '#333333' },
+const getStyles = (theme) => ({
+  container: { flex: 1, backgroundColor: theme.background },
+  header: { padding: 20, paddingTop: 60, backgroundColor: theme.headerBackground, borderBottomWidth: 1, borderBottomColor: theme.headerBorder },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   headerLeft: { flexShrink: 1 },
-  headerTitle: { fontSize: 28, fontWeight: 'bold', color: '#ffffff' },
-  headerCount: { fontSize: 15, color: '#888888', marginTop: 4 },
+  headerTitle: { fontSize: 28, fontWeight: 'bold', color: theme.headerTitle },
+  headerCount: { fontSize: 15, color: theme.headerSub, marginTop: 4 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#2a2a2a',
+    backgroundColor: theme.inputBackground,
     marginHorizontal: 16,
     marginTop: 16,
     marginBottom: 8,
     borderRadius: 8,
     paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: '#333333',
+    borderColor: theme.inputBorder,
   },
   searchIcon: { marginRight: 8 },
   searchInput: {
     flex: 1,
-    color: '#ffffff',
+    color: theme.inputText,
     fontSize: 15,
     paddingVertical: 10,
   },
   clearSearch: { padding: 4 },
   list: { padding: 16 },
   collectionCard: { 
-    backgroundColor: '#1e1e1e', 
+    backgroundColor: theme.cardBackground, 
     borderRadius: 12, 
     padding: 16, 
     marginBottom: 12, 
     flexDirection: 'row', 
     alignItems: 'center', 
     borderWidth: 1, 
-    borderColor: '#333333' 
+    borderColor: theme.cardBorder 
   },
   collectionIcon: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(229, 9, 20, 0.15)',
+    backgroundColor: theme.accentSoft,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
   },
   collectionInfo: { flex: 1 },
-  collectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#ffffff', marginBottom: 4 },
-  collectionType: { fontSize: 13, color: '#e50914', fontWeight: '600', marginBottom: 4, textTransform: 'uppercase' },
-  collectionDetails: { fontSize: 13, color: '#aaaaaa', marginBottom: 6 },
+  collectionTitle: { fontSize: 16, fontWeight: 'bold', color: theme.titleText, marginBottom: 4 },
+  collectionType: { fontSize: 13, color: theme.typeText, fontWeight: '600', marginBottom: 4, textTransform: 'uppercase' },
+  collectionDetails: { fontSize: 13, color: theme.detailsText, marginBottom: 6 },
   tagsContainer: { flexDirection: 'row', flexWrap: 'wrap' },
   tagChip: {
     fontSize: 11,
-    color: '#888888',
-    backgroundColor: '#2a2a2a',
+    color: theme.chipText,
+    backgroundColor: theme.chipBackground,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
@@ -645,8 +698,8 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   emptyState: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
-  emptyText: { fontSize: 20, fontWeight: 'bold', color: '#666666', marginTop: 16, marginBottom: 8 },
-  emptySubtext: { fontSize: 14, color: '#444444', textAlign: 'center' },
+  emptyText: { fontSize: 20, fontWeight: 'bold', color: theme.textFaint, marginTop: 16, marginBottom: 8 },
+  emptySubtext: { fontSize: 14, color: theme.textMuted, textAlign: 'center' },
   fab: { 
     position: 'absolute', 
     bottom: 30, 
@@ -654,7 +707,7 @@ const styles = StyleSheet.create({
     width: 64, 
     height: 64, 
     borderRadius: 32, 
-    backgroundColor: '#e50914', 
+    backgroundColor: theme.fabBackground, 
     justifyContent: 'center', 
     alignItems: 'center', 
     shadowColor: '#000', 
@@ -665,22 +718,22 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: { 
     flex: 1, 
-    backgroundColor: 'rgba(0, 0, 0, 0.6)', 
+    backgroundColor: theme.backdrop, 
     justifyContent: 'flex-end' 
   },
   bottomSheetContainer: { 
-    backgroundColor: '#1e1e1e', 
+    backgroundColor: theme.sheetBackground, 
     borderTopLeftRadius: 24, 
     borderTopRightRadius: 24, 
     borderWidth: 1,
     borderBottomWidth: 0,
-    borderColor: '#333333',
+    borderColor: theme.sheetBorder,
     maxHeight: height * 0.85,
   },
   sheetHandle: {
     width: 40,
     height: 4,
-    backgroundColor: '#444444',
+    backgroundColor: theme.sheetHandle,
     borderRadius: 2,
     alignSelf: 'center',
     marginTop: 15,
@@ -689,7 +742,7 @@ const styles = StyleSheet.create({
   sheetTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#ffffff',
+    color: theme.textPrimary,
     textAlign: 'center',
     marginBottom: 10,
     marginHorizontal: 20,
@@ -708,7 +761,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#333333'
+    borderBottomColor: theme.sheetBorder
   },
   optionIcon: {
     width: 48,
@@ -719,42 +772,64 @@ const styles = StyleSheet.create({
     marginRight: 16
   },
   optionTextContainer: { flex: 1 },
-  optionTitle: { fontSize: 16, fontWeight: '600', color: '#ffffff', marginBottom: 4 },
-  optionSubtitle: { fontSize: 13, color: '#888888' },
+  optionTitle: { fontSize: 16, fontWeight: '600', color: theme.textPrimary, marginBottom: 4 },
+  optionSubtitle: { fontSize: 13, color: theme.textMuted },
   sheetCancel: {
     marginHorizontal: 20,
     marginBottom: 20,
     marginTop: 10,
     paddingVertical: 16,
     alignItems: 'center',
-    backgroundColor: '#2a2a2a',
+    backgroundColor: theme.chipBackground,
     borderRadius: 12
   },
   sheetCancelText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#ffffff'
+    color: theme.textPrimary
   },
   sortFilterButton: {
     padding: 8,
-    backgroundColor: '#2a2a2a',
+    backgroundColor: theme.chipBackground,
     borderRadius: 8,
+  },
+  themeButton: {
+    padding: 8,
+    backgroundColor: theme.chipBackground,
+    borderRadius: 8,
+  },
+  themePickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.sheetBorder,
+  },
+  themePickerSelectedIcon: {
+    marginRight: 12,
+  },
+  themePickerLabel: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.textPrimary,
   },
   inputLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#aaaaaa',
+    color: theme.textSecondary,
     marginBottom: 8,
     marginTop: 16,
   },
   input: {
-    backgroundColor: '#2a2a2a',
-    color: '#ffffff',
+    backgroundColor: theme.inputBackground,
+    color: theme.inputText,
     fontSize: 16,
     padding: 12,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#333333',
+    borderColor: theme.inputBorder,
   },
   textArea: {
     height: 80,
@@ -769,38 +844,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 20,
-    backgroundColor: '#2a2a2a',
+    backgroundColor: theme.chipBackground,
     marginRight: 8,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#333333',
+    borderColor: theme.chipBorder,
   },
   typeChipActive: {
-    backgroundColor: 'rgba(229, 9, 20, 0.15)',
-    borderColor: '#e50914',
+    backgroundColor: theme.accentSoft,
+    borderColor: theme.accent,
   },
   typeChipText: {
-    color: '#ffffff',
+    color: theme.textPrimary,
     fontSize: 14,
     fontWeight: '600',
   },
   typeChipTextActive: {
-    color: '#e50914',
+    color: theme.accent,
   },
   saveButton: {
-    backgroundColor: '#e50914',
+    backgroundColor: theme.accent,
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 24,
   },
   saveButtonText: {
-    color: '#ffffff',
+    color: theme.onAccent,
     fontSize: 16,
     fontWeight: 'bold',
   },
   emptyFilterText: {
-    color: '#666666',
+    color: theme.textFaint,
     fontSize: 14,
     fontStyle: 'italic',
     paddingVertical: 8,

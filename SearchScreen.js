@@ -1,10 +1,30 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, FlatList, StyleSheet, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TextInput, FlatList, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
 import { searchMovieByText } from './tmdbService';
 import { searchAlbumByText } from './discogsService';
 import { resolveModelId, getCategory, MEDIA_CATEGORIES } from './mediaModels';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getTheme, DEFAULT_THEME_ID } from './theme';
 
 export default function SearchScreen({ route, navigation }) {
+  const [preferences, setPreferences] = useState({ theme: DEFAULT_THEME_ID });
+
+  // Load theme preferences
+  useEffect(() => {
+    const loadPrefs = async () => {
+      try {
+        const prefsJSON = await AsyncStorage.getItem('media_cabinet_preferences');
+        if (prefsJSON) setPreferences(JSON.parse(prefsJSON));
+      } catch (e) {
+        console.error('Failed to load prefs', e);
+      }
+    };
+    loadPrefs();
+  }, []);
+
+  const theme = getTheme(preferences.theme);
+  const styles = getStyles(theme);
+
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -90,7 +110,7 @@ export default function SearchScreen({ route, navigation }) {
         <TextInput
           style={styles.input}
           placeholder={isMusic ? "Search by album or artist..." : "Search by title..."}
-          placeholderTextColor="#888888"
+          placeholderTextColor={theme.placeholderText}
           value={query}
           onChangeText={setQuery}
           onSubmitEditing={handleSearch}
@@ -102,7 +122,7 @@ export default function SearchScreen({ route, navigation }) {
 
       {isLoading ? (
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color="#e50914" />
+          <ActivityIndicator size="large" color={theme.accent} />
           <Text style={styles.loadingText}>Searching {isMusic ? 'Discogs' : 'TMDB'}...</Text>
         </View>
       ) : results.length > 0 ? (
@@ -123,34 +143,34 @@ export default function SearchScreen({ route, navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212' },
+const getStyles = (theme) => ({
+  container: { flex: 1, backgroundColor: theme.background },
   collectionBanner: {
-    backgroundColor: 'rgba(229, 9, 20, 0.15)',
+    backgroundColor: theme.accentSoft,
     padding: 12,
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#333333',
+    borderBottomColor: theme.cardBorder,
   },
   collectionBannerText: {
-    color: '#e50914',
+    color: theme.accent,
     fontSize: 14,
     fontWeight: '600',
   },
-  searchBar: { flexDirection: 'row', padding: 15, backgroundColor: '#1a1a1a', borderBottomWidth: 1, borderBottomColor: '#333333' },
-  input: { flex: 1, backgroundColor: '#2a2a2a', color: '#ffffff', padding: 12, borderRadius: 8, fontSize: 16, marginRight: 10 },
-  searchButton: { backgroundColor: '#e50914', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20, borderRadius: 8 },
-  searchButtonText: { color: '#ffffff', fontWeight: 'bold', fontSize: 16 },
+  searchBar: { flexDirection: 'row', padding: 15, backgroundColor: theme.headerBackground, borderBottomWidth: 1, borderBottomColor: theme.headerBorder },
+  input: { flex: 1, backgroundColor: theme.inputBackground, color: theme.inputText, padding: 12, borderRadius: 8, fontSize: 16, marginRight: 10 },
+  searchButton: { backgroundColor: theme.accent, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20, borderRadius: 8 },
+  searchButtonText: { color: theme.onAccent, fontWeight: 'bold', fontSize: 16 },
   list: { padding: 15 },
-  resultCard: { backgroundColor: '#1e1e1e', padding: 12, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: '#333333', flexDirection: 'row', alignItems: 'center' },
-  resultPoster: { width: 50, height: 75, borderRadius: 6, marginRight: 12, backgroundColor: '#333333' },
+  resultCard: { backgroundColor: theme.cardBackground, padding: 12, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: theme.cardBorder, flexDirection: 'row', alignItems: 'center' },
+  resultPoster: { width: 50, height: 75, borderRadius: 6, marginRight: 12, backgroundColor: theme.chipBackground },
   resultPosterMusic: { width: 60, height: 60 }, // Square aspect ratio for albums
-  resultPosterPlaceholder: { width: 50, height: 75, borderRadius: 6, marginRight: 12, backgroundColor: '#2a2a2a' },
+  resultPosterPlaceholder: { width: 50, height: 75, borderRadius: 6, marginRight: 12, backgroundColor: theme.chipBackground },
   resultInfo: { flex: 1 },
-  resultTitle: { fontSize: 16, fontWeight: 'bold', color: '#ffffff', marginBottom: 4 },
-  resultYear: { fontSize: 14, color: '#aaaaaa' },
-  resultFormat: { fontSize: 12, color: '#e07a5f', marginTop: 2 },
+  resultTitle: { fontSize: 16, fontWeight: 'bold', color: theme.titleText, marginBottom: 4 },
+  resultYear: { fontSize: 14, color: theme.textSecondary },
+  resultFormat: { fontSize: 12, color: theme.accent, marginTop: 2 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-  loadingText: { color: '#aaaaaa', marginTop: 10, fontSize: 16 },
-  emptyText: { color: '#888888', fontSize: 16, textAlign: 'center' }
+  loadingText: { color: theme.textSecondary, marginTop: 10, fontSize: 16 },
+  emptyText: { color: theme.textMuted, fontSize: 16, textAlign: 'center' }
 });

@@ -14,6 +14,8 @@ import * as THREE from 'three';
 import { MediaItem3D } from './Media3DViewer';
 import { Ionicons } from '@expo/vector-icons';
 import { getModel, resolveModelId, getCameraDistance, DEFAULT_MODEL_ID } from './mediaModels';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getTheme, DEFAULT_THEME_ID } from './theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -22,19 +24,14 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
  * ============================================================ */
 
 const PIXELS_PER_UNIT = 120;
-
 const H_VISIBLE_MARGIN = 1.0;
-
 const CAMERA_FOLLOW_SPEED = 16;
-
 const ANIMATION_SPEED = 0.06;
 const DRAG_ROTATION_SPEED = 0.012;
 const MAX_X_ROTATION = Math.PI * 0.48;
 const FOCUS_ROTATION_SPEED = 0.08;
-
 const FOCUS_DRAG_ZONE_WIDTH_RATIO = 0.68;
 const FOCUS_DRAG_ZONE_HEIGHT_RATIO = 0.62;
-
 const HIT_TARGET_WIDTH_SCALE = 0.92;
 
 const VIEW_MODE_OPTIONS = [
@@ -81,6 +78,7 @@ function ItemOnShelf({
   modelId,
   model,
   focusZ,
+  placeholderColor,
 }) {
   const groupRef = useRef(null);
 
@@ -205,7 +203,7 @@ function ItemOnShelf({
       ) : (
         <mesh>
           <boxGeometry args={[placeholderWidth, model.dims.h, model.dims.d]} />
-          <meshStandardMaterial color="#211815" roughness={0.85} />
+          <meshStandardMaterial color={placeholderColor} roughness={0.85} />
         </mesh>
       )}
     </group>
@@ -229,6 +227,7 @@ function ShelfScene({
   model,
   defaultCameraZ,
   focusZ,
+  placeholderColor,
 }) {
   useFrame(({ camera }, delta) => {
     const safeDelta = clamp(
@@ -272,11 +271,8 @@ function ShelfScene({
   return (
     <>
       <ambientLight intensity={0.68} />
-
       <directionalLight position={[5, 8, 6]} intensity={0.95} />
-
       <directionalLight position={[-5, 2, 4]} intensity={0.35} />
-
       <pointLight position={[0, 3, 3]} intensity={0.25} distance={12} />
 
       {items.map((item, itemIndex) => {
@@ -294,6 +290,7 @@ function ShelfScene({
             modelId={modelId}
             model={model}
             focusZ={focusZ}
+            placeholderColor={placeholderColor}
           />
         );
       })}
@@ -314,7 +311,6 @@ function ShelfHitTargets({ items, orientation, onFocus, contentWidth, spacingPx,
       {items.map((item, itemIndex) => {
         const centerX = SCREEN_WIDTH / 2 + itemIndex * spacingPx;
         const left = centerX - hitWidth / 2;
-
         const top = SCREEN_HEIGHT / 2 - itemHitHeight / 2;
 
         return (
@@ -346,6 +342,26 @@ export default function ShelfView3D({
   onViewModeChange,
   onOpenFilters,
 }) {
+  const [preferences, setPreferences] = useState({ theme: DEFAULT_THEME_ID });
+
+  // Load theme preferences
+  useEffect(() => {
+    const loadPrefs = async () => {
+      try {
+        const prefsJSON = await AsyncStorage.getItem('media_cabinet_preferences');
+        if (prefsJSON) {
+          setPreferences(JSON.parse(prefsJSON));
+        }
+      } catch (e) {
+        console.error('Failed to load prefs', e);
+      }
+    };
+    loadPrefs();
+  }, []);
+
+  const theme = getTheme(preferences.theme);
+  const styles = getStyles(theme);
+
   const [orientation, setOrientation] = useState('spine');
   const [focusedId, setFocusedId] = useState(null);
   const [showViewMenu, setShowViewMenu] = useState(false);
@@ -365,17 +381,9 @@ export default function ShelfView3D({
     : DEFAULT_MODEL_ID;
   const model = getModel(modelId);
 
-  // Dynamically scale camera distances based on the physical size of the media.
   const maxDim = Math.max(model.dims.w, model.dims.h, model.dims.d);
-  const defaultCameraZ = maxDim * 2.7; // resting/browsing distance — unchanged, not reported as an issue
+  const defaultCameraZ = maxDim * 2.7; 
 
-  // The camera doesn't move on focus (see ShelfScene above) — it stays at
-  // defaultCameraZ, and the item animates to focusZ. So
-  // (defaultCameraZ - focusZ) is the effective camera-to-item distance once
-  // focused. getCameraDistance (mediaModels.js) is the same fit math used by
-  // the standalone Media3DViewer, so focus mode here frames each model
-  // identically to the fullscreen viewer, and any per-type tuning
-  // (model.cameraFit) only has to be set once, in one place.
   const screenAspect = SCREEN_WIDTH / SCREEN_HEIGHT;
   const focusZ = defaultCameraZ - getCameraDistance(modelId, screenAspect);
 
@@ -521,7 +529,7 @@ export default function ShelfView3D({
           antialias: true,
         }}
       >
-        <color attach="background" args={['#120c0a']} />
+        <color attach="background" args={[theme.background]} />
 
         <ShelfScene
           items={items}
@@ -536,6 +544,7 @@ export default function ShelfView3D({
           model={model}
           defaultCameraZ={defaultCameraZ}
           focusZ={focusZ}
+          placeholderColor={theme.cardBackground}
         />
       </Canvas>
 
@@ -600,7 +609,7 @@ export default function ShelfView3D({
             onPress={onBack}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="chevron-back" size={24} color="#ffffff" />
+            <Ionicons name="chevron-back" size={24} color={theme.textPrimary} />
           </TouchableOpacity>
 
           <View style={styles.topBarRight}>
@@ -608,21 +617,21 @@ export default function ShelfView3D({
               style={styles.iconButton}
               onPress={handleRandomItem}
             >
-              <Ionicons name="shuffle-outline" size={22} color="#ffffff" />
+              <Ionicons name="shuffle-outline" size={22} color={theme.textPrimary} />
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.iconButton}
               onPress={() => setShowViewMenu(true)}
             >
-              <Ionicons name="cube-outline" size={22} color="#ffffff" />
+              <Ionicons name="cube-outline" size={22} color={theme.textPrimary} />
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.iconButton}
               onPress={onOpenFilters}
             >
-              <Ionicons name="options-outline" size={22} color="#ffffff" />
+              <Ionicons name="options-outline" size={22} color={theme.textPrimary} />
             </TouchableOpacity>
           </View>
         </View>
@@ -653,7 +662,7 @@ export default function ShelfView3D({
                   <Ionicons
                     name={option.icon}
                     size={20}
-                    color={isActive ? '#e50914' : '#ffffff'}
+                    color={isActive ? theme.accent : theme.textPrimary}
                   />
 
                   <Text
@@ -666,7 +675,7 @@ export default function ShelfView3D({
                   </Text>
 
                   {isActive && (
-                    <Ionicons name="checkmark" size={18} color="#e50914" />
+                    <Ionicons name="checkmark" size={18} color={theme.accent} />
                   )}
                 </TouchableOpacity>
               );
@@ -688,7 +697,7 @@ export default function ShelfView3D({
                   : 'book-outline'
               }
               size={22}
-              color="#ffffff"
+              color={theme.textPrimary}
             />
 
             <Text style={styles.controlText}>
@@ -705,12 +714,11 @@ export default function ShelfView3D({
  * STYLES
  * ============================================================ */
 
-const styles = StyleSheet.create({
+const getStyles = (theme) => ({
   container: {
     flex: 1,
-    backgroundColor: '#120c0a',
+    backgroundColor: theme.background,
   },
-
   focusOverlay: {
     position: 'absolute',
     top: 0,
@@ -720,11 +728,9 @@ const styles = StyleSheet.create({
     zIndex: 15,
     elevation: 15,
   },
-
   focusDragZone: {
     position: 'absolute',
   },
-
   topBar: {
     position: 'absolute',
     top: 50,
@@ -736,20 +742,18 @@ const styles = StyleSheet.create({
     zIndex: 20,
     elevation: 20,
   },
-
   topBarRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
-
   iconButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(18, 12, 10, 0.55)',
+    backgroundColor: theme.backdrop,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.14)',
+    borderColor: theme.sheetBorder,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -758,32 +762,29 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 8,
   },
-
   dropdownBackdrop: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    backgroundColor: theme.backdrop,
     zIndex: 998,
     elevation: 998,
   },
-
   viewMenu: {
     position: 'absolute',
     top: 102,
     right: 16,
     minWidth: 170,
-    backgroundColor: '#201512',
+    backgroundColor: theme.sheetBackground,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#3a2a22',
+    borderColor: theme.sheetBorder,
     overflow: 'hidden',
     zIndex: 999,
     elevation: 999,
   },
-
   viewMenuOption: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -791,23 +792,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     gap: 10,
   },
-
   viewMenuOptionBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: '#3a2a22',
+    borderBottomColor: theme.sheetBorder,
   },
-
   viewMenuOptionText: {
     flex: 1,
     fontSize: 15,
-    color: '#ffffff',
+    color: theme.textPrimary,
   },
-
   viewMenuOptionTextActive: {
-    color: '#e50914',
+    color: theme.accent,
     fontWeight: '600',
   },
-
   controlsContainer: {
     position: 'absolute',
     bottom: 26,
@@ -819,16 +816,15 @@ const styles = StyleSheet.create({
     zIndex: 20,
     elevation: 20,
   },
-
   controlButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(18, 12, 10, 0.72)',
+    backgroundColor: theme.backdrop,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: '#634334',
+    borderColor: theme.sheetBorder,
     gap: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
@@ -836,9 +832,8 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
     elevation: 8,
   },
-
   controlText: {
-    color: '#ffffff',
+    color: theme.textPrimary,
     fontSize: 14,
     fontWeight: '700',
   },

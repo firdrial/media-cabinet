@@ -15,6 +15,7 @@ import {
 } from '@react-three/drei';
 
 import * as THREE from 'three';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { warpQuad } from './modules/quad-detect';
 import { 
   getFaceConfigs, 
@@ -22,6 +23,7 @@ import {
   getCameraDistance, 
   DEFAULT_MODEL_ID 
 } from './mediaModels';
+import { getTheme, DEFAULT_THEME_ID } from './theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -51,10 +53,6 @@ function faceCorners(face) {
 
 /**
  * Applies an explicit vertical UV flip.
- *
- * This is deliberately done in the texture coordinate transform rather
- * than texture.flipY because EXGL's texture upload path is unreliable
- * with UNPACK_FLIP_Y_WEBGL.
  */
 function configureTexture(texture) {
   texture.flipY = false;
@@ -79,7 +77,7 @@ function configureTexture(texture) {
 /**
  * Loads a successfully warped face.
  */
-function FacePlane({ config, texture, isPlaceholder = false }) {
+function FacePlane({ config, texture, isPlaceholder = false, placeholderColor = '#303030', missingColor = '#151515' }) {
   if (texture) configureTexture(texture);
 
   return (
@@ -93,7 +91,7 @@ function FacePlane({ config, texture, isPlaceholder = false }) {
         map={texture || null}
         // Three.js multiplies a map by the material color. Textured faces
         // must remain white so their image pixels are not darkened to black.
-        color={texture ? '#ffffff' : isPlaceholder ? '#303030' : '#151515'}
+        color={texture ? '#ffffff' : isPlaceholder ? placeholderColor : missingColor}
         roughness={config.roughness}
         metalness={0}
         side={THREE.DoubleSide}
@@ -103,22 +101,18 @@ function FacePlane({ config, texture, isPlaceholder = false }) {
 }
 
 /**
- * Takes one photographed face:
- *
- * camera image
- *      ↓
- * detected quad
- *      ↓
- * native perspective rectification
- *      ↓
- * exact physical rectangle
- *      ↓
- * explicit 3D face
+ * Takes one photographed face.
  */
-function LoadedFaces({ faces }) {
+function LoadedFaces({ faces, placeholderColor, missingColor }) {
   const textures = useTexture(faces.map(face => face.url));
   return faces.map((face, index) => (
-    <FacePlane key={face.config.key} config={face.config} texture={textures[index]} />
+    <FacePlane 
+      key={face.config.key} 
+      config={face.config} 
+      texture={textures[index]} 
+      placeholderColor={placeholderColor}
+      missingColor={missingColor}
+    />
   ));
 }
 
@@ -152,7 +146,7 @@ function getWarpedFaceUrl(face, config) {
   return warpCache.get(cacheKey);
 }
 
-function ResolvedFaces({ textureMap, modelId }) {
+function ResolvedFaces({ textureMap, modelId, placeholderColor, missingColor }) {
   const configs = useMemo(() => getFaceConfigs(modelId), [modelId]);
   const sourceKey = configs.map(config => textureSourceKey(textureMap?.[config.key])).join('::');
   const [faces, setFaces] = useState(null);
@@ -178,16 +172,27 @@ function ResolvedFaces({ textureMap, modelId }) {
 
   if (!faces) {
     return configs.map(config => (
-      <FacePlane key={config.key} config={config} isPlaceholder />
+      <FacePlane 
+        key={config.key} 
+        config={config} 
+        isPlaceholder 
+        placeholderColor={placeholderColor} 
+        missingColor={missingColor} 
+      />
     ));
   }
 
   const loadedKeys = new Set(faces.map(face => face.config.key));
   return (
     <>
-      {faces.length > 0 && <LoadedFaces faces={faces} />}
+      {faces.length > 0 && <LoadedFaces faces={faces} placeholderColor={placeholderColor} missingColor={missingColor} />}
       {configs.filter(config => !loadedKeys.has(config.key)).map(config => (
-        <FacePlane key={config.key} config={config} />
+        <FacePlane 
+          key={config.key} 
+          config={config} 
+          placeholderColor={placeholderColor} 
+          missingColor={missingColor} 
+        />
       ))}
     </>
   );
@@ -195,14 +200,14 @@ function ResolvedFaces({ textureMap, modelId }) {
 
 /**
  * A rigid physical media body.
- *
- * The box itself is deliberately kept untextured.
- * Six explicit planes sit exactly on its six surfaces and carry the
- * rectified photographs.
- *
- * This avoids relying on THREE.BoxGeometry's face-specific UV layout.
  */
-export function MediaItem3D({ textureMap, modelId = DEFAULT_MODEL_ID }) {
+export function MediaItem3D({ 
+  textureMap, 
+  modelId = DEFAULT_MODEL_ID, 
+  bodyColor = '#171717',
+  placeholderColor = '#303030',
+  missingColor = '#151515'
+}) {
   const map = textureMap || EMPTY_TEXTURE_MAP;
   const dims = getModel(modelId).dims;
 
@@ -213,20 +218,24 @@ export function MediaItem3D({ textureMap, modelId = DEFAULT_MODEL_ID }) {
         <boxGeometry
           args={[dims.w, dims.h, dims.d]}
         />
-
         <meshStandardMaterial
-          color="#171717"
+          color={bodyColor}
           roughness={0.72}
           metalness={0}
         />
       </mesh>
 
-      <ResolvedFaces textureMap={map} modelId={modelId} />
+      <ResolvedFaces 
+        textureMap={map} 
+        modelId={modelId} 
+        placeholderColor={placeholderColor}
+        missingColor={missingColor}
+      />
     </group>
   );
 }
 
-function Loader() {
+function Loader({ theme, styles }) {
   const { active } = useProgress();
 
   if (!active) return null;
@@ -235,9 +244,8 @@ function Loader() {
     <View style={styles.loadingOverlay}>
       <ActivityIndicator
         size="large"
-        color="#e07a5f"
+        color={theme.accent}
       />
-
       <Text style={styles.loadingText}>
         Mapping Textures...
       </Text>
@@ -249,10 +257,24 @@ export default function Media3DViewer({
   textureMap,
   modelId = DEFAULT_MODEL_ID,
 }) {
-  // Camera distance now lives in mediaModels.js (getCameraDistance), so this
-  // viewer, ShelfView3D's focus mode, and any future viewer all frame the
-  // same model identically — and any per-type tuning (model.cameraFit) only
-  // has to be set once, in one place.
+  const [preferences, setPreferences] = useState({ theme: DEFAULT_THEME_ID });
+
+  // Load theme preferences
+  useEffect(() => {
+    const loadPrefs = async () => {
+      try {
+        const prefsJSON = await AsyncStorage.getItem('media_cabinet_preferences');
+        if (prefsJSON) setPreferences(JSON.parse(prefsJSON));
+      } catch (e) {
+        console.error('Failed to load prefs', e);
+      }
+    };
+    loadPrefs();
+  }, []);
+
+  const theme = getTheme(preferences.theme);
+  const styles = getStyles(theme);
+
   const cameraParams = useMemo(() => {
     const aspect = SCREEN_WIDTH / SCREEN_HEIGHT;
     const z = getCameraDistance(modelId, aspect);
@@ -276,7 +298,7 @@ export default function Media3DViewer({
       >
         <color
           attach="background"
-          args={['#050505']}
+          args={[theme.background]}
         />
 
         <ambientLight intensity={0.72} />
@@ -292,7 +314,13 @@ export default function Media3DViewer({
         />
 
         <Suspense fallback={null}>
-          <MediaItem3D textureMap={textureMap} modelId={modelId} />
+          <MediaItem3D 
+            textureMap={textureMap} 
+            modelId={modelId} 
+            bodyColor={theme.cardBackground}
+            placeholderColor={theme.cardBackground}
+            missingColor={theme.background}
+          />
         </Suspense>
 
         <OrbitControls
@@ -309,41 +337,35 @@ export default function Media3DViewer({
         />
       </Canvas>
 
-      <Loader />
+      <Loader theme={theme} styles={styles} />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (theme) => ({
   container: {
     flex: 1,
-    backgroundColor: '#050505',
+    backgroundColor: theme.background,
   },
-
   canvas: {
     flex: 1,
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
   },
-
   loadingOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-
     justifyContent: 'center',
     alignItems: 'center',
-
-    backgroundColor: 'rgba(5,5,5,0.72)',
-
+    backgroundColor: theme.backdrop,
     zIndex: 10,
   },
-
   loadingText: {
     marginTop: 12,
-    color: '#e07a5f',
+    color: theme.accent,
     fontSize: 16,
     fontWeight: '600',
   },
