@@ -14,6 +14,7 @@ import {
   useProgress,
   Center,
   Text3D, // Swapped from Text to Text3D for React Native compatibility
+  RoundedBox, // Added for Blu-ray rounded corners
 } from '@react-three/drei';
 
 import * as THREE from 'three';
@@ -78,8 +79,10 @@ function configureTexture(texture) {
 
 /**
  * Loads a successfully warped face.
+ * Added `hasRoundedCorners` to enable transparency so the sharp
+ * corners of the 2D plane don't overhang the 3D rounded box.
  */
-function FacePlane({ config, texture, isPlaceholder = false, placeholderColor = '#303030', missingColor = '#151515' }) {
+function FacePlane({ config, texture, isPlaceholder = false, placeholderColor = '#303030', missingColor = '#151515', hasRoundedCorners = false }) {
   if (texture) configureTexture(texture);
 
   return (
@@ -97,6 +100,10 @@ function FacePlane({ config, texture, isPlaceholder = false, placeholderColor = 
         roughness={config.roughness}
         metalness={0}
         side={THREE.DoubleSide}
+        // Enable transparency only if the model has rounded corners AND we have a texture.
+        // This allows the native alpha mask to hide the sharp overhanging corners of the plane.
+        transparent={hasRoundedCorners && !!texture}
+        alphaTest={hasRoundedCorners && !!texture ? 0.1 : 0}
       />
     </mesh>
   );
@@ -105,7 +112,7 @@ function FacePlane({ config, texture, isPlaceholder = false, placeholderColor = 
 /**
  * Takes one photographed face.
  */
-function LoadedFaces({ faces, placeholderColor, missingColor }) {
+function LoadedFaces({ faces, placeholderColor, missingColor, hasRoundedCorners }) {
   const textures = useTexture(faces.map(face => face.url));
   return faces.map((face, index) => (
     <FacePlane 
@@ -114,6 +121,7 @@ function LoadedFaces({ faces, placeholderColor, missingColor }) {
       texture={textures[index]} 
       placeholderColor={placeholderColor}
       missingColor={missingColor}
+      hasRoundedCorners={hasRoundedCorners}
     />
   ));
 }
@@ -124,7 +132,7 @@ function textureSourceKey(face) {
   return [face.uri || '', face.warpedUri || '', face.isWarped ? '1' : '0', JSON.stringify(face.corners || [])].join('|');
 }
 
-function getWarpedFaceUrl(face, config) {
+function getWarpedFaceUrl(face, config, cornerRadiusPx = 0) {
   if (!face) return Promise.resolve(null);
   if (typeof face === 'string') return Promise.resolve(face);
   if (face.isWarped || face.warpedUri) return Promise.resolve(face.warpedUri || face.uri);
@@ -133,11 +141,12 @@ function getWarpedFaceUrl(face, config) {
   const corners = faceCorners(face);
   if (!rawUrl || !corners) return Promise.resolve(null);
 
-  const cacheKey = `${config.key}|${rawUrl}|${JSON.stringify(corners)}`;
+  // Include cornerRadiusPx in the cache key to prevent collisions
+  const cacheKey = `${config.key}|${rawUrl}|${JSON.stringify(corners)}|${cornerRadiusPx}`;
   if (!warpCache.has(cacheKey)) {
     warpCache.set(
       cacheKey,
-      warpQuad(rawUrl, corners, config.outW, config.outH, WARP_FLIP_V)
+      warpQuad(rawUrl, corners, config.outW, config.outH, WARP_FLIP_V, cornerRadiusPx)
         .then(result => result?.uri || null)
         .catch(error => {
           console.error(`[Media3D] ${config.key}: warp failed`, error);
@@ -150,6 +159,12 @@ function getWarpedFaceUrl(face, config) {
 
 function ResolvedFaces({ textureMap, modelId, placeholderColor, missingColor }) {
   const configs = useMemo(() => getFaceConfigs(modelId), [modelId]);
+  const model = useMemo(() => getModel(modelId), [modelId]);
+  const hasRoundedCorners = !!(model.cornerRadius && model.cornerRadius > 0);
+  
+  // Calculate pixel radius for native masking (world units mm/100 -> pixels mm*10 => factor 1000)
+  const cornerRadiusPx = Math.round((model.cornerRadius || 0) * 1000);
+  
   const sourceKey = configs.map(config => textureSourceKey(textureMap?.[config.key])).join('::');
   const [faces, setFaces] = useState(null);
 
@@ -159,7 +174,7 @@ function ResolvedFaces({ textureMap, modelId, placeholderColor, missingColor }) 
 
     Promise.all(configs.map(async config => ({
       config,
-      url: await getWarpedFaceUrl(textureMap?.[config.key], config),
+      url: await getWarpedFaceUrl(textureMap?.[config.key], config, cornerRadiusPx),
     }))).then(resolved => {
       if (!alive) return;
       const readyFaces = resolved.filter(face => face.url);
@@ -170,7 +185,7 @@ function ResolvedFaces({ textureMap, modelId, placeholderColor, missingColor }) 
     return () => {
       alive = false;
     };
-  }, [sourceKey, configs]);
+  }, [sourceKey, configs, cornerRadiusPx]);
 
   if (!faces) {
     return configs.map(config => (
@@ -187,7 +202,7 @@ function ResolvedFaces({ textureMap, modelId, placeholderColor, missingColor }) 
   const loadedKeys = new Set(faces.map(face => face.config.key));
   return (
     <>
-      {faces.length > 0 && <LoadedFaces faces={faces} placeholderColor={placeholderColor} missingColor={missingColor} />}
+      {faces.length > 0 && <LoadedFaces faces={faces} placeholderColor={placeholderColor} missingColor={missingColor} hasRoundedCorners={hasRoundedCorners} />}
       {configs.filter(config => !loadedKeys.has(config.key)).map(config => (
         <FacePlane 
           key={config.key} 
@@ -258,21 +273,33 @@ export function MediaItem3D({
   spineTextColor = '#ffffff', // <-- Added for theme color support
 }) {
   const map = textureMap || EMPTY_TEXTURE_MAP;
-  const dims = getModel(modelId).dims;
+  const model = getModel(modelId);
+  const dims = model.dims;
+  const cornerRadius = model.cornerRadius;
 
   return (
     <group>
       {/* Solid physical body */}
-      <mesh>
-        <boxGeometry
-          args={[dims.w, dims.h, dims.d]}
-        />
-        <meshStandardMaterial
-          color={bodyColor}
-          roughness={0.72}
-          metalness={0}
-        />
-      </mesh>
+      {cornerRadius ? (
+        <RoundedBox args={[dims.w, dims.h, dims.d]} radius={cornerRadius} smoothness={4}>
+          <meshStandardMaterial
+            color={bodyColor}
+            roughness={0.72}
+            metalness={0}
+          />
+        </RoundedBox>
+      ) : (
+        <mesh>
+          <boxGeometry
+            args={[dims.w, dims.h, dims.d]}
+          />
+          <meshStandardMaterial
+            color={bodyColor}
+            roughness={0.72}
+            metalness={0}
+          />
+        </mesh>
+      )}
 
       <ResolvedFaces 
         textureMap={map} 

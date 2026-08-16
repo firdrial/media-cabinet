@@ -136,6 +136,7 @@ export const MEDIA_MODELS = {
     category: MEDIA_CATEGORIES.FILM,
     caseType: 'keep',
     scanNoun: 'Blu-ray Case',
+    cornerRadius: 0.03, // 3mm physical corner radius (mm / 100)
     dims: { w: 1.35, h: 1.71, d: 0.13 },
     shelf: {
       orientations: ['spine', 'cover'],

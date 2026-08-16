@@ -4,7 +4,7 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { useTexture } from '@react-three/drei';
 import * as THREE from 'three';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getFaceConfigs, DEFAULT_MODEL_ID } from './mediaModels';
+import { getFaceConfigs, getModel, DEFAULT_MODEL_ID } from './mediaModels';
 import { getTheme, DEFAULT_THEME_ID } from './theme';
 
 const DURATION = 1.2;
@@ -36,16 +36,44 @@ uniform vec2 uFacePx;
 uniform float uBorderPx;
 uniform vec3 uColor;
 uniform float uFill;
+uniform float uRadiusPx;
 varying vec2 vUv;
+
 void main() {
-  vec2 d = vec2(min(vUv.x, 1.0 - vUv.x) * uFacePx.x,
-                min(vUv.y, 1.0 - vUv.y) * uFacePx.y);
-  if (min(d.x, d.y) < uBorderPx) { gl_FragColor = vec4(uColor, 1.0); return; }
+  vec2 p = vUv * uFacePx;
+  vec2 b = uFacePx / 2.0;
+  float r = uRadiusPx;
+  
+  // Signed Distance Field (SDF) for a rounded rectangle
+  vec2 d = abs(p - b) - b + r;
+  float sdf = min(max(d.x, d.y), 0.0) + length(max(d, 0.0)) - r;
+
+  // Discard fragments outside the rounded corners
+  if (sdf > 0.0) {
+    discard;
+  }
+
+  // Distance to the inner edge (sdf is negative inside the shape)
+  float edgeDist = -sdf;
+
+  // Draw the border
+  if (edgeDist < uBorderPx) {
+    gl_FragColor = vec4(uColor, 1.0);
+    return;
+  }
+
+  // Draw the texture
   if (uHasMap > 0.5) {
     gl_FragColor = vec4(texture2D(uMap, vec2(vUv.x, 1.0 - vUv.y)).rgb, 1.0);
     return;
   }
-  if (uFill > 0.0) { gl_FragColor = vec4(uColor, uFill); return; }
+
+  // Draw the empty fill
+  if (uFill > 0.0) {
+    gl_FragColor = vec4(uColor, uFill);
+    return;
+  }
+
   discard;
 }`;
 
@@ -61,6 +89,7 @@ function makeMaterial(accentColor = DEFAULT_GUIDE_COLOR) {
       uBorderPx: { value: BORDER_PX },
       uColor: { value: new THREE.Color(accentColor) },
       uFill: { value: 0.1 },
+      uRadiusPx: { value: 0 },
     },
     vertexShader: VERT,
     fragmentShader: FRAG,
@@ -107,6 +136,8 @@ function AnimatedBox({ stepKey, fromKey, captured, guideWidth, guideHeight, mode
   propsRef.current = { stepKey, guideWidth, guideHeight };
 
   const faceConfigs = useMemo(() => getFaceConfigs(modelId), [modelId]);
+  const model = useMemo(() => getModel(modelId), [modelId]);
+  
   const faceMap = useMemo(() => {
     const map = {};
     faceConfigs.forEach((c) => { map[c.key] = c; });
@@ -179,10 +210,13 @@ function AnimatedBox({ stepKey, fromKey, captured, guideWidth, guideHeight, mode
 
     faceConfigs.forEach((c) => {
       if (materials[c.key]) {
-        materials[c.key].uniforms.uFacePx.value.set(
-          c.width * curRef.current.s * proj,
-          c.height * curRef.current.s * proj
-        );
+        const scaledWidth = c.width * curRef.current.s * proj;
+        const scaledHeight = c.height * curRef.current.s * proj;
+        materials[c.key].uniforms.uFacePx.value.set(scaledWidth, scaledHeight);
+        
+        // Dynamically scale the corner radius to match the current zoom/scale
+        const scaledRadius = (model.cornerRadius || 0) * curRef.current.s * proj;
+        materials[c.key].uniforms.uRadiusPx.value = scaledRadius;
       }
     });
   });

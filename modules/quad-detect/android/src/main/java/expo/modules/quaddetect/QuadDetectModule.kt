@@ -14,6 +14,9 @@ import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.RectF
 import android.util.Base64
 import android.util.Log
 
@@ -283,6 +286,7 @@ class QuadDetectModule : Module() {
             outW: Int,
             outH: Int,
             flipV: Boolean,
+            cornerRadiusPx: Int, // <-- Added for Blu-ray rounded corners
             promise: Promise ->
 
             try {
@@ -309,7 +313,8 @@ class QuadDetectModule : Module() {
                     TAG,
                     "warpQuad source=${bmp.width}x${bmp.height} " +
                         "out=${outW}x${outH} " +
-                        "flipV=$flipV"
+                        "flipV=$flipV " +
+                        "radiusPx=$cornerRadiusPx"
                 )
 
                 /*
@@ -518,10 +523,40 @@ class QuadDetectModule : Module() {
                 }
 
                 /*
+                 * ROUNDED CORNER MASKING (Blu-Ray support)
+                 *
+                 * Canonical SRC_IN recipe: draw an anti-aliased opaque
+                 * rounded-rect shape onto a FRESH transparent bitmap,
+                 * then composite the warped bitmap through it with
+                 * SRC_IN. The warped image is kept only inside the
+                 * rounded shape; the sharp corners become transparent.
+                 */
+                if (cornerRadiusPx > 0) {
+                    val radius = cornerRadiusPx.toFloat()
+                    val masked = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+                    val maskCanvas = Canvas(masked)
+                    
+                    val shapePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+                    maskCanvas.drawRoundRect(
+                        RectF(0f, 0f, outW.toFloat(), outH.toFloat()),
+                        radius,
+                        radius,
+                        shapePaint
+                    )
+                    
+                    shapePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+                    maskCanvas.drawBitmap(out, 0f, 0f, shapePaint)
+                    
+                    out.recycle()
+                    out = masked
+                }
+
+                /*
                  * PNG is intentional.
                  *
                  * These are texture assets, not photographs for display.
-                 * PNG avoids JPEG compression around the exact quad boundary.
+                 * PNG avoids JPEG compression around the exact quad boundary
+                 * and preserves the transparent rounded corners.
                  */
                 val file =
                     File(

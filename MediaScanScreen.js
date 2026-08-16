@@ -7,7 +7,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { detectQuad, warpQuad } from './modules/quad-detect';
 import GuideBox3D from './GuideBox3D';
-import { getScanSteps, getWarpOutputSizes, DEFAULT_MODEL_ID } from './mediaModels';
+import { getScanSteps, getWarpOutputSizes, getModel, DEFAULT_MODEL_ID } from './mediaModels';
 import { getTheme, DEFAULT_THEME_ID } from './theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -32,7 +32,7 @@ function polyAreaJS(pts) {
   let a = 0;
   for (let i = 0; i < pts.length; i++) {
     const p = pts[i]; const q = pts[(i + 1) % pts.length];
-    a += p.x * q.y - q.x * p.y;
+    a += p.x * q.y - q.x * q.y;
   }
   return Math.abs(a) / 2;
 }
@@ -112,8 +112,12 @@ function CornerQuadrant({ uri, imgW, imgH, anchor, corners, scale, qIndex, respo
 
 export default function MediaScanScreen({ navigation, route }) {
   const modelId = route.params?.modelId || DEFAULT_MODEL_ID;
+  const model = useMemo(() => getModel(modelId), [modelId]);
   const SCAN_STEPS = useMemo(() => getScanSteps(modelId), [modelId]);
   const WARP_OUTPUT_SIZES = useMemo(() => getWarpOutputSizes(modelId), [modelId]);
+  
+  // Calculate pixel radius for native masking (world units mm/100 -> pixels mm*10 => factor 1000)
+  const cornerRadiusPx = useMemo(() => Math.round((model.cornerRadius || 0) * 1000), [model]);
 
   const [preferences, setPreferences] = useState({ theme: DEFAULT_THEME_ID });
 
@@ -407,12 +411,14 @@ export default function MediaScanScreen({ navigation, route }) {
 
       try {
         const [outW, outH] = WARP_OUTPUT_SIZES[currentStep.key];
+        
         const warpResult = await warpQuad(
           savedFile.uri,
           cornersNorm,
           outW,
           outH,
-          false
+          false,
+          cornerRadiusPx // <-- Pass rounded corner radius to native module
         );
 
         if (warpResult?.uri) {

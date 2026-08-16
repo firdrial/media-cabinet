@@ -12,7 +12,7 @@ try {
 }
 
 console.log(
-  '[QuadDetect] wrapper v5 - clipped perspective warp'
+  '[QuadDetect] wrapper v6 - clipped perspective warp with corner radius support'
 );
 
 export async function detectQuad(uri, initQuad) {
@@ -52,7 +52,8 @@ export async function warpQuad(
   cornersNorm,
   outW,
   outH,
-  flipV = false
+  flipV = false,
+  cornerRadiusPx = 0 // <-- Added for Blu-ray rounded corners
 ) {
   if (
     !nativeModule ||
@@ -86,7 +87,8 @@ export async function warpQuad(
       flat,
       Math.round(outW),
       Math.round(outH),
-      Boolean(flipV)
+      Boolean(flipV),
+      Math.round(cornerRadiusPx) // <-- Pass down to native
     );
 
   } catch (e) {
