@@ -454,7 +454,7 @@ export default function ItemFormScreen({ route, navigation }) {
         {coverArtUrl ? (
           <Image 
             source={{ uri: coverArtUrl }} 
-            style={styles.posterPreview} 
+            style={[styles.posterPreview, isMusic && styles.posterPreviewMusic]} 
             resizeMode="cover"
           />
         ) : null}
@@ -711,7 +711,9 @@ const getStyles = (theme) => ({
     fontWeight: '600',
   },
   sectionHeader: { fontSize: 20, fontWeight: 'bold', color: theme.accent, marginTop: 20, marginBottom: 10 },
-  posterPreview: { width: 150, height: 150, borderRadius: 8, alignSelf: 'center', marginBottom: 20, backgroundColor: theme.chipBackground },
+  // FIXED: Default to 2:3 movie poster ratio, square only for music
+  posterPreview: { width: 150, height: 225, borderRadius: 8, alignSelf: 'center', marginBottom: 20, backgroundColor: theme.chipBackground },
+  posterPreviewMusic: { width: 150, height: 150 }, // Square for albums
   label: { fontSize: 14, color: theme.textSecondary, marginBottom: 5, marginTop: 15 },
   input: { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, borderWidth: 1, borderRadius: 8, padding: 15, fontSize: 16, color: theme.inputText },
   multiline: { height: 100, textAlignVertical: 'top' },
