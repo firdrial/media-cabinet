@@ -13,7 +13,14 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { MediaItem3D } from './Media3DViewer';
 import { Ionicons } from '@expo/vector-icons';
-import { getModel, resolveModelId, getCameraDistance, DEFAULT_MODEL_ID } from './mediaModels';
+import { 
+  getModel, 
+  resolveModelId, 
+  getCameraDistance, 
+  DEFAULT_MODEL_ID,
+  getCategory,
+  MEDIA_CATEGORIES 
+} from './mediaModels';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getTheme, DEFAULT_THEME_ID } from './theme';
 
@@ -398,6 +405,13 @@ export default function ShelfView3D({
     : DEFAULT_MODEL_ID;
   const model = getModel(modelId);
 
+  // Determine category for dynamic UI (Artist vs Director)
+  const category = getCategory(modelId);
+  const isMusic = category === MEDIA_CATEGORIES.MUSIC;
+
+  // Find the currently focused item to display metadata
+  const focusedItem = focusedId ? items.find(item => item.id === focusedId) : null;
+
   const maxDim = Math.max(model.dims.w, model.dims.h, model.dims.d);
   const defaultCameraZ = maxDim * 2.7; 
 
@@ -602,6 +616,23 @@ export default function ShelfView3D({
           model={model}
         />
       </ScrollView>
+
+      {/* ================================================== */}
+      {/* FOCUSED ITEM METADATA OVERLAY (TOP CENTER)         */}
+      {/* ================================================== */}
+      {focusedItem && (
+        <View style={styles.focusedItemInfoContainer} pointerEvents="none">
+          <View style={styles.focusedItemPill}>
+            <Text style={styles.focusedItemTitle} numberOfLines={1}>
+              {focusedItem.title || 'Unknown Title'}
+            </Text>
+            <Text style={styles.focusedItemMeta} numberOfLines={1}>
+              {focusedItem.year ? `${focusedItem.year} • ` : ''}
+              {isMusic ? 'Artist' : 'Director'}: {focusedItem.director || 'Unknown'}
+            </Text>
+          </View>
+        </View>
+      )}
 
       {focusedId && (
         <TouchableWithoutFeedback onPress={handleReturn}>
@@ -856,5 +887,46 @@ const getStyles = (theme) => ({
     color: theme.pillText,
     fontSize: 14,
     fontWeight: '700',
+  },
+  
+  /* ================================================== */
+  /* FOCUSED ITEM METADATA OVERLAY STYLES               */
+  /* ================================================== */
+  focusedItemInfoContainer: {
+    position: 'absolute',
+    top: 60,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 25, // Sits above the focusOverlay touch catcher
+    elevation: 25,
+  },
+  focusedItemPill: {
+    backgroundColor: theme.pillBackground,
+    borderWidth: 1,
+    borderColor: theme.pillBorder,
+    borderRadius: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    maxWidth: '80%', // Prevents overlapping the back button on small screens
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.5,
+    shadowRadius: 5,
+    elevation: 8,
+  },
+  focusedItemTitle: {
+    color: theme.pillText,
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  focusedItemMeta: {
+    color: theme.pillText,
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+    opacity: 0.85,
   },
 });
