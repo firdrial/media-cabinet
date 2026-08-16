@@ -16,7 +16,12 @@ import {
 
 import * as THREE from 'three';
 import { warpQuad } from './modules/quad-detect';
-import { getFaceConfigs, getModel, getCameraDistance } from './mediaModels';
+import { 
+  getFaceConfigs, 
+  getModel, 
+  getCameraDistance, 
+  DEFAULT_MODEL_ID 
+} from './mediaModels';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -29,7 +34,7 @@ const warpCache = new Map();
 const EMPTY_TEXTURE_MAP = {};
 
 // Legacy export for components not yet migrated to modelId (e.g. GuideBox3D)
-export const FACE_CONFIGS = getFaceConfigs('vhs');
+export const FACE_CONFIGS = getFaceConfigs(DEFAULT_MODEL_ID);
 
 function faceUrl(face) {
   if (!face) return null;
@@ -197,7 +202,7 @@ function ResolvedFaces({ textureMap, modelId }) {
  *
  * This avoids relying on THREE.BoxGeometry's face-specific UV layout.
  */
-export function VHSTape({ textureMap, modelId = 'vhs' }) {
+export function MediaItem3D({ textureMap, modelId = DEFAULT_MODEL_ID }) {
   const map = textureMap || EMPTY_TEXTURE_MAP;
   const dims = getModel(modelId).dims;
 
@@ -240,9 +245,9 @@ function Loader() {
   );
 }
 
-export default function Tape3DViewer({
+export default function Media3DViewer({
   textureMap,
-  modelId = 'vhs',
+  modelId = DEFAULT_MODEL_ID,
 }) {
   // Camera distance now lives in mediaModels.js (getCameraDistance), so this
   // viewer, ShelfView3D's focus mode, and any future viewer all frame the
@@ -287,7 +292,7 @@ export default function Tape3DViewer({
         />
 
         <Suspense fallback={null}>
-          <VHSTape textureMap={textureMap} modelId={modelId} />
+          <MediaItem3D textureMap={textureMap} modelId={modelId} />
         </Suspense>
 
         <OrbitControls

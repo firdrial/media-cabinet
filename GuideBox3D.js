@@ -3,7 +3,7 @@ import { View, StyleSheet } from 'react-native';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { useTexture } from '@react-three/drei';
 import * as THREE from 'three';
-import { getFaceConfigs } from './mediaModels';
+import { getFaceConfigs, DEFAULT_MODEL_ID } from './mediaModels';
 
 const DURATION = 1.2;
 const BORDER_PX = 3;
@@ -99,7 +99,7 @@ function GuideFace({ config, material, url }) {
   );
 }
 
-function AnimatedBox({ stepKey, fromKey, captured, guideWidth, guideHeight, modelId = 'vhs' }) {
+function AnimatedBox({ stepKey, fromKey, captured, guideWidth, guideHeight, modelId = DEFAULT_MODEL_ID }) {
   const group = useRef();
   const propsRef = useRef();
   propsRef.current = { stepKey, guideWidth, guideHeight };

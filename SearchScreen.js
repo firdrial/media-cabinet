@@ -23,10 +23,10 @@ export default function SearchScreen({ route, navigation }) {
   };
 
   const handleSelectMovie = (movie) => {
-    navigation.navigate('AddTape', { 
+    navigation.navigate('AddItem', { 
       searchResult: movie,
       collectionId,
-      allowedFormats, // Preserved as an array to prevent breaking AddTapeScreen
+      allowedFormats, // Preserved as an array to prevent breaking ItemFormScreen
       returnToCollection,
     });
   };

@@ -12,47 +12,47 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { saveTape, loadTapes } from './tapeStorage';
+import { saveItem, loadItems } from './mediaStorage';
 import { useFocusEffect, usePreventRemove } from '@react-navigation/native';
 import { searchMovieByBarcode, getFullMovieDetails } from './apiService';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
-import Tape3DPreview from './Tape3DPreview';
+import Media3DPreview from './Media3DPreview';
 import { warpQuad } from './modules/quad-detect';
 import { resolveModelId, getModel, getCaseTypes, getScanLabel } from './mediaModels';
 
-export default function AddTapeScreen({ route, navigation }) {
-  const isEdit = !!route.params?.tape;
-  const existingTape = route.params?.tape;
+export default function ItemFormScreen({ route, navigation }) {
+  const isEdit = !!route.params?.item;
+  const existingItem = route.params?.item;
   
   const collectionId = route.params?.collectionId || null;
   const allowedFormats = route.params?.allowedFormats || null;
   const returnToCollection = route.params?.returnToCollection || false;
 
-  const [title, setTitle] = useState(existingTape?.title || '');
-  const [year, setYear] = useState(existingTape?.year || '');
-  const [format, setFormat] = useState(existingTape?.format || (allowedFormats ? allowedFormats[0] : 'VHS'));
-  const [caseType, setCaseType] = useState(existingTape?.caseType || 'slipcase');
-  const [notes, setNotes] = useState(existingTape?.notes || '');
-  const [barcode, setBarcode] = useState(existingTape?.barcode || '');
-  const [tmdbId, setTmdbId] = useState(existingTape?.tmdbId || '');
-  const [posterPath, setPosterPath] = useState(existingTape?.posterPath || '');
-  const [coverPhoto, setCoverPhoto] = useState(existingTape?.coverPhoto || null);
-  const [textureMap, setTextureMap] = useState(existingTape?.textureMap || null);
+  const [title, setTitle] = useState(existingItem?.title || '');
+  const [year, setYear] = useState(existingItem?.year || '');
+  const [format, setFormat] = useState(existingItem?.format || (allowedFormats ? allowedFormats[0] : 'VHS'));
+  const [caseType, setCaseType] = useState(existingItem?.caseType || 'slipcase');
+  const [notes, setNotes] = useState(existingItem?.notes || '');
+  const [barcode, setBarcode] = useState(existingItem?.barcode || '');
+  const [tmdbId, setTmdbId] = useState(existingItem?.tmdbId || '');
+  const [posterPath, setPosterPath] = useState(existingItem?.posterPath || '');
+  const [coverPhoto, setCoverPhoto] = useState(existingItem?.coverPhoto || null);
+  const [textureMap, setTextureMap] = useState(existingItem?.textureMap || null);
   const [showCoverOptions, setShowCoverOptions] = useState(false);
   
-  const [releaseDate, setReleaseDate] = useState(existingTape?.releaseDate || '');
-  const [runtime, setRuntime] = useState(existingTape?.runtime || '');
-  const [distributor, setDistributor] = useState(existingTape?.distributor || '');
-  const [edition, setEdition] = useState(existingTape?.edition || '');
-  const [tagline, setTagline] = useState(existingTape?.tagline || '');
-  const [overview, setOverview] = useState(existingTape?.overview || '');
-  const [genres, setGenres] = useState(existingTape?.genres ? existingTape.genres.join(', ') : '');
-  const [budget, setBudget] = useState(existingTape?.budget || '');
-  const [revenue, setRevenue] = useState(existingTape?.revenue || '');
-  const [productionCompanies, setProductionCompanies] = useState(existingTape?.productionCompanies ? existingTape.productionCompanies.join(', ') : '');
-  const [director, setDirector] = useState(existingTape?.director || '');
-  const [writer, setWriter] = useState(existingTape?.writer || '');
+  const [releaseDate, setReleaseDate] = useState(existingItem?.releaseDate || '');
+  const [runtime, setRuntime] = useState(existingItem?.runtime || '');
+  const [distributor, setDistributor] = useState(existingItem?.distributor || '');
+  const [edition, setEdition] = useState(existingItem?.edition || '');
+  const [tagline, setTagline] = useState(existingItem?.tagline || '');
+  const [overview, setOverview] = useState(existingItem?.overview || '');
+  const [genres, setGenres] = useState(existingItem?.genres ? existingItem.genres.join(', ') : '');
+  const [budget, setBudget] = useState(existingItem?.budget || '');
+  const [revenue, setRevenue] = useState(existingItem?.revenue || '');
+  const [productionCompanies, setProductionCompanies] = useState(existingItem?.productionCompanies ? existingItem.productionCompanies.join(', ') : '');
+  const [director, setDirector] = useState(existingItem?.director || '');
+  const [writer, setWriter] = useState(existingItem?.writer || '');
 
   const modelId = resolveModelId(format, caseType);
 
@@ -259,9 +259,9 @@ export default function AddTapeScreen({ route, navigation }) {
   };
 
   const performSave = async () => {
-    const tapeData = {
-      id: existingTape?.id || Date.now().toString(),
-      collectionId: collectionId || existingTape?.collectionId || null,
+    const itemData = {
+      id: existingItem?.id || Date.now().toString(),
+      collectionId: collectionId || existingItem?.collectionId || null,
       title,
       year,
       format,
@@ -285,11 +285,11 @@ export default function AddTapeScreen({ route, navigation }) {
       productionCompanies: productionCompanies.split(',').map(p => p.trim()).filter(p => p),
       director,
       writer,
-      dateAdded: existingTape?.dateAdded || new Date().toISOString(), 
+      dateAdded: existingItem?.dateAdded || new Date().toISOString(), 
     };
 
     try {
-      await saveTape(tapeData);
+      await saveItem(itemData);
       
       // Mark as saving to bypass the usePreventRemove alert
       isSavingRef.current = true;
@@ -297,7 +297,7 @@ export default function AddTapeScreen({ route, navigation }) {
       
       Alert.alert('Success!', `"${title}" has been saved!`);
       
-      navigation.replace('TapeDetail', { tape: tapeData, returnToCollection });
+      navigation.replace('ItemDetail', { item: itemData, returnToCollection });
       
     } catch (error) {
       isSavingRef.current = false; // Reset on failure
@@ -313,22 +313,22 @@ export default function AddTapeScreen({ route, navigation }) {
     }
 
     try {
-      const allTapes = await loadTapes();
-      const targetCollectionId = collectionId || existingTape?.collectionId || null;
+      const allItems = await loadItems();
+      const targetCollectionId = collectionId || existingItem?.collectionId || null;
       
-      const duplicate = allTapes.find(tape => {
-        // Skip the current tape if we are editing
-        if (isEdit && tape.id === existingTape.id) return false;
+      const duplicate = allItems.find(item => {
+        // Skip the current item if we are editing
+        if (isEdit && item.id === existingItem.id) return false;
         
         // Must be in the same collection
-        const tapeCollectionId = tape.collectionId || null;
-        if (targetCollectionId !== tapeCollectionId) return false;
+        const itemCollectionId = item.collectionId || null;
+        if (targetCollectionId !== itemCollectionId) return false;
         
         // Check identifiers
-        if (tmdbId && tape.tmdbId && String(tape.tmdbId) === String(tmdbId)) return true;
-        if (barcode && tape.barcode && tape.barcode === barcode) return true;
-        if (title && year && tape.title === title && String(tape.year) === String(year)) return true;
-        if (title && !year && tape.title === title) return true;
+        if (tmdbId && item.tmdbId && String(item.tmdbId) === String(tmdbId)) return true;
+        if (barcode && item.barcode && item.barcode === barcode) return true;
+        if (title && year && item.title === title && String(item.year) === String(year)) return true;
+        if (title && !year && item.title === title) return true;
         
         return false;
       });
@@ -402,7 +402,7 @@ export default function AddTapeScreen({ route, navigation }) {
             ))}
           </View>
         ) : (
-          <TextInput style={styles.input} placeholder="e.g., VHS, DVD, Betamax" value={format} onChangeText={(val) => {
+          <TextInput style={styles.input} placeholder="e.g., VHS, CD, Vinyl" value={format} onChangeText={(val) => {
              setFormat(val);
              const types = getCaseTypes(val);
              if (types && !types.find(t => t.id === caseType)) setCaseType(types[0].id);
@@ -510,7 +510,7 @@ export default function AddTapeScreen({ route, navigation }) {
 
         <TouchableOpacity 
           style={styles.scan3DButton} 
-          onPress={() => navigation.navigate('ReelScan', { returnTo: 'AddTape', modelId })}
+          onPress={() => navigation.navigate('MediaScan', { returnTo: 'AddItem', modelId })}
         >
           <Ionicons name="cube-outline" size={24} color="#e07a5f" />
           <Text style={styles.scan3DButtonText}>
@@ -523,7 +523,7 @@ export default function AddTapeScreen({ route, navigation }) {
             <Text style={styles.scanStatus}>
               <Ionicons name="checkmark-circle" size={16} color="#4CAF50" /> 3D scan captured!
             </Text>
-            <Tape3DPreview textureMap={textureMap} modelId={textureMap?.modelId || modelId} />
+            <Media3DPreview textureMap={textureMap} modelId={textureMap?.modelId || modelId} />
           </>
         )}
 

@@ -5,7 +5,7 @@
  * can scan, render, and shelve.
  *
  * Units: world units = physical mm / 100 (matches the legacy
- * VHS_W/H/D constants: 103mm -> 1.03, etc.)
+ * VHS dimensions: 103mm -> 1.03, etc.)
  *
  * Warp outputs: pixels = physical mm * 10 (matches legacy
  * 1030x1870 etc.), except where explicitly capped for GPU
@@ -17,10 +17,10 @@
 
 const FACE_EPS = 0.0015;
 
-/* Face order used by Tape3DViewer's FACE_CONFIGS today. */
+/* Face order used by Media3DViewer's FACE_CONFIGS today. */
 const FACE_CONFIG_ORDER = ['front', 'back', 'right', 'left', 'top', 'bottom'];
 
-/* Capture order used by ReelScanScreen's SCAN_STEPS today. */
+/* Capture order used by MediaScanScreen's SCAN_STEPS today. */
 export const SCAN_FACE_ORDER = ['front', 'left', 'back', 'right', 'top', 'bottom'];
 
 const DEFAULT_ROUGHNESS = {
@@ -57,7 +57,7 @@ export const MEDIA_MODELS = {
       back:   { source: 'scan', label: 'Back Cover',  guideNoun: 'BACK cover',   out: [1030, 1870] },
       right:  { source: 'scan', label: 'Right Spine', guideNoun: 'RIGHT SPINE',  out: [250, 1870] },
       top:    { source: 'scan', label: 'Top Flap',    guideNoun: 'TOP FLAP',     out: [1030, 250] },
-      bottom: { source: 'scan', label: 'Tape Bottom', guideNoun: 'TAPE BOTTOM',  out: [1030, 250] },
+      bottom: { source: 'scan', label: 'Bottom Edge', guideNoun: 'BOTTOM EDGE',  out: [1030, 250] },
     },
   },
 
@@ -81,7 +81,7 @@ export const MEDIA_MODELS = {
       back:   { source: 'scan', label: 'Back Cover',  guideNoun: 'BACK cover',   out: [1030, 1870] },
       right:  { source: 'scan', label: 'Right Spine', guideNoun: 'RIGHT SPINE',  out: [500, 1870] },
       top:    { source: 'scan', label: 'Top Flap',    guideNoun: 'TOP FLAP',     out: [1030, 500] },
-      bottom: { source: 'scan', label: 'Tape Bottom', guideNoun: 'TAPE BOTTOM',  out: [1030, 500] },
+      bottom: { source: 'scan', label: 'Bottom Edge', guideNoun: 'BOTTOM EDGE',  out: [1030, 500] },
     },
   },
 
@@ -228,12 +228,12 @@ export function getCaseTypes(format) {
 
 export function getScanLabel(modelId, isRescan) {
   const model = getModel(modelId);
-  const noun = model.scanNoun || 'Tape';
+  const noun = model.scanNoun || 'Item';
   return `${isRescan ? 'Rescan' : 'Scan'} ${noun}`;
 }
 
 /* ============================================================
- * CAMERA FRAMING (Tape3DViewer + ShelfView3D focus mode)
+ * CAMERA FRAMING (Media3DViewer + ShelfView3D focus mode)
  *
  * Single source of truth for "how far back does the camera need
  * to be to frame this model nicely." Each model may optionally
@@ -284,7 +284,7 @@ export function getCameraDistance(modelId, aspect) {
 }
 
 /* ----------------------------------------------------------
- * 3D face configs — exact shape of Tape3DViewer's FACE_CONFIGS
+ * 3D face configs — exact shape of Media3DViewer's FACE_CONFIGS
  * so it can be swapped in without behavior changes.
  * ---------------------------------------------------------- */
 
@@ -359,7 +359,7 @@ export function getFaceConfigs(modelId) {
 }
 
 /* ----------------------------------------------------------
- * Scan flow — exact shapes of ReelScanScreen's SCAN_STEPS
+ * Scan flow — exact shapes of MediaScanScreen's SCAN_STEPS
  * and WARP_OUTPUT_SIZES, filtered to scannable faces only.
  * ---------------------------------------------------------- */
 

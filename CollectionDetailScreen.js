@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { loadTapes } from './tapeStorage';
+import { loadItems } from './mediaStorage';
 import ShelfView3D from './ShelfView3D';
 
 const { height } = Dimensions.get('window');
@@ -88,7 +88,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
    */
   const loadPreferences = async () => {
     try {
-      const prefsJSON = await AsyncStorage.getItem('vhs_tracker_preferences');
+      const prefsJSON = await AsyncStorage.getItem('media_cabinet_preferences');
       if (prefsJSON) {
         const parsed = JSON.parse(prefsJSON);
         setPreferences({
@@ -113,7 +113,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
     try {
       setPreferences(newPrefs);
       await AsyncStorage.setItem(
-        'vhs_tracker_preferences',
+        'media_cabinet_preferences',
         JSON.stringify(newPrefs)
       );
     } catch (error) {
@@ -126,11 +126,11 @@ export default function CollectionDetailScreen({ route, navigation }) {
    * LOAD ITEMS
    * ----------------------------------------------------------
    */
-  const loadItems = async () => {
+  const loadItemsFromStorage = async () => {
     try {
-      const allTapes = await loadTapes();
-      const collectionItems = allTapes.filter(
-        tape => tape.collectionId === collection.id
+      const allItems = await loadItems();
+      const collectionItems = allItems.filter(
+        item => item.collectionId === collection.id
       );
       setItems(collectionItems);
     } catch (error) {
@@ -146,7 +146,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
   useEffect(() => {
     const init = async () => {
       await loadPreferences();
-      await loadItems();
+      await loadItemsFromStorage();
     };
     init();
   }, []);
@@ -158,7 +158,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
    */
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
-      loadItems();
+      loadItemsFromStorage();
       loadPreferences();
     });
     return unsubscribe;
@@ -398,7 +398,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
       <TouchableOpacity
         style={styles.itemCard}
         activeOpacity={0.7}
-        onPress={() => navigation.navigate('TapeDetail', { tape: item, returnToCollection: true })}
+        onPress={() => navigation.navigate('ItemDetail', { item: item, returnToCollection: true })}
       >
         <View style={styles.itemCardContent}>
           {displayImage ? (
@@ -441,7 +441,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
     <TouchableOpacity
       style={styles.listItemCard}
       activeOpacity={0.7}
-      onPress={() => navigation.navigate('TapeDetail', { tape: item, returnToCollection: true })}
+      onPress={() => navigation.navigate('ItemDetail', { item: item, returnToCollection: true })}
     >
       <View style={styles.listItemInfo}>
         <Text style={styles.listItemTitle} numberOfLines={1}>
@@ -679,41 +679,12 @@ export default function CollectionDetailScreen({ route, navigation }) {
                 <Ionicons name="chevron-forward" size={20} color="#666666" />
               </TouchableOpacity>
 
-              {/* BARCODE */}
-              <TouchableOpacity
-                style={styles.sheetOption}
-                onPress={() => {
-                  setShowAddMenu(false);
-                  navigation.navigate('BarcodeScanner', {
-                    collectionId: collection.id,
-                    allowedFormats: [type],
-                    returnToCollection: true,
-                  });
-                }}
-              >
-                <View
-                  style={[
-                    styles.optionIcon,
-                    { backgroundColor: 'rgba(229, 9, 20, 0.15)' },
-                  ]}
-                >
-                  <Ionicons name="barcode-outline" size={24} color="#e50914" />
-                </View>
-                <View style={styles.optionTextContainer}>
-                  <Text style={styles.optionTitle}>Add by Barcode</Text>
-                  <Text style={styles.optionSubtitle}>
-                    Scan a physical item's barcode
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color="#666666" />
-              </TouchableOpacity>
-
               {/* MANUAL */}
               <TouchableOpacity
                 style={styles.sheetOption}
                 onPress={() => {
                   setShowAddMenu(false);
-                  navigation.navigate('AddTape', {
+                  navigation.navigate('AddItem', {
                     collectionId: collection.id,
                     allowedFormats: [type],
                     returnToCollection: true,

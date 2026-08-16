@@ -1,16 +1,17 @@
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Tape3DViewer from './Tape3DViewer';
+import Media3DViewer from './Media3DViewer';
+import { DEFAULT_MODEL_ID } from './mediaModels';
 
-const Tape3DViewerScreen = ({ route, navigation }) => {
+const Media3DViewerScreen = ({ route, navigation }) => {
   const { textureMap, title, modelId } = route.params || {};
-  const activeModelId = modelId || textureMap?.modelId || 'vhs';
+  const activeModelId = modelId || textureMap?.modelId || DEFAULT_MODEL_ID;
 
   return (
     <View style={styles.container}>
       {/* 3D Canvas */}
-      <Tape3DViewer textureMap={textureMap} modelId={activeModelId} />
+      <Media3DViewer textureMap={textureMap} modelId={activeModelId} />
 
       {/* UI Overlay */}
       <View style={styles.overlay}>
@@ -67,4 +68,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default Tape3DViewerScreen;
+export default Media3DViewerScreen;

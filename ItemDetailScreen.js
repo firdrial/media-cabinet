@@ -2,19 +2,19 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, Image, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { deleteTape, saveTape } from './tapeStorage';
+import { deleteItem, saveItem } from './mediaStorage';
 import { useFocusEffect } from '@react-navigation/native';
-import Tape3DPreview from './Tape3DPreview';
+import Media3DPreview from './Media3DPreview';
 import { resolveModelId } from './mediaModels';
 
-export default function TapeDetailScreen({ route, navigation }) {
-  const { tape } = route.params;
+export default function ItemDetailScreen({ route, navigation }) {
+  const { item } = route.params;
   const returnToCollection = route.params?.returnToCollection || false;
-  const [currentTape, setCurrentTape] = useState(tape);
+  const [currentItem, setCurrentItem] = useState(item);
 
   // Determine the active 3D model ID. Falls back to resolving from format/caseType
-  // for legacy tapes that were saved before the mediaModels registry existed.
-  const activeModelId = currentTape.modelId || currentTape.textureMap?.modelId || resolveModelId(currentTape.format, currentTape.caseType);
+  // for legacy items that were saved before the mediaModels registry existed.
+  const activeModelId = currentItem.modelId || currentItem.textureMap?.modelId || resolveModelId(currentItem.format, currentItem.caseType);
 
   useFocusEffect(
     useCallback(() => {
@@ -23,13 +23,13 @@ export default function TapeDetailScreen({ route, navigation }) {
           const pendingJSON = await AsyncStorage.getItem('pending_texture_map');
           if (pendingJSON) {
             const parsedMap = JSON.parse(pendingJSON);
-            setCurrentTape(prev => {
+            setCurrentItem(prev => {
               const updated = { ...prev, textureMap: parsedMap };
-              // If the scan captured a specific modelId, persist it to the tape record
+              // If the scan captured a specific modelId, persist it to the item record
               if (parsedMap.modelId) {
                 updated.modelId = parsedMap.modelId;
               }
-              saveTapeToStorage(updated);
+              saveItemToStorage(updated);
               return updated;
             });
             await AsyncStorage.removeItem('pending_texture_map');
@@ -42,18 +42,18 @@ export default function TapeDetailScreen({ route, navigation }) {
     }, [])
   );
 
-  const saveTapeToStorage = async (tapeToSave) => {
+  const saveItemToStorage = async (itemToSave) => {
     try {
-      await saveTape(tapeToSave);
+      await saveItem(itemToSave);
     } catch (error) {
-      console.error('Failed to update tape with 3D scan', error);
+      console.error('Failed to update item with 3D scan', error);
     }
   };
 
   const handleDelete = async () => {
     Alert.alert(
-      'Delete Tape',
-      `Are you sure you want to delete "${currentTape.title}"?`,
+      'Delete Item',
+      `Are you sure you want to delete "${currentItem.title}"?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -61,11 +61,11 @@ export default function TapeDetailScreen({ route, navigation }) {
           style: 'destructive',
           onPress: async () => {
             try {
-              await deleteTape(currentTape.id);
+              await deleteItem(currentItem.id);
               
               handleBack();
             } catch (error) {
-              Alert.alert('Error', 'Failed to delete the tape.');
+              Alert.alert('Error', 'Failed to delete the item.');
             }
           }
         }
@@ -74,7 +74,7 @@ export default function TapeDetailScreen({ route, navigation }) {
   };
 
   const handleEdit = () => {
-    navigation.navigate('AddTape', { tape: currentTape, returnToCollection });
+    navigation.navigate('AddItem', { item: currentItem, returnToCollection });
   };
 
   const handleBack = () => {
@@ -92,7 +92,7 @@ export default function TapeDetailScreen({ route, navigation }) {
     navigation.goBack();
   };
 
-  const displayImage = currentTape.coverPhoto || (currentTape.posterPath ? `https://image.tmdb.org/t/p/w500${currentTape.posterPath}` : null);
+  const displayImage = currentItem.coverPhoto || (currentItem.posterPath ? `https://image.tmdb.org/t/p/w500${currentItem.posterPath}` : null);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
@@ -100,19 +100,19 @@ export default function TapeDetailScreen({ route, navigation }) {
         <TouchableOpacity onPress={handleBack} style={styles.iconButton}>
           <Ionicons name="arrow-back" size={24} color="#ffffff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>{currentTape.title}</Text>
+        <Text style={styles.headerTitle} numberOfLines={1}>{currentItem.title}</Text>
         <View style={{ width: 24 }} /> 
       </View>
 
       <View style={styles.content}>
-        {currentTape.textureMap ? (
+        {currentItem.textureMap ? (
           <View style={styles.previewWrapper}>
-            <Tape3DPreview textureMap={currentTape.textureMap} modelId={activeModelId} style={{ width: '100%', height: 250 }} />
+            <Media3DPreview textureMap={currentItem.textureMap} modelId={activeModelId} style={{ width: '100%', height: 250 }} />
             
             {/* Fullscreen Overlay Button (Bottom Right) */}
             <TouchableOpacity 
               style={styles.overlayButton} 
-              onPress={() => navigation.navigate('Tape3DViewer', { textureMap: currentTape.textureMap, title: currentTape.title, modelId: activeModelId })}
+              onPress={() => navigation.navigate('Media3DViewer', { textureMap: currentItem.textureMap, title: currentItem.title, modelId: activeModelId })}
             >
               <Ionicons name="expand-outline" size={22} color="#ffffff" />
             </TouchableOpacity>
@@ -129,25 +129,25 @@ export default function TapeDetailScreen({ route, navigation }) {
             {/* Fallback button when no 3D scan exists yet */}
             <TouchableOpacity 
               style={styles.scan3DFallbackButton} 
-              onPress={() => navigation.navigate('ReelScan', { returnTo: 'TapeDetail', modelId: activeModelId })}
+              onPress={() => navigation.navigate('MediaScan', { returnTo: 'ItemDetail', modelId: activeModelId })}
             >
               <Ionicons name="scan-outline" size={20} color="#ffffff" />
-              <Text style={styles.scan3DFallbackButtonText}>Scan 3D Box</Text>
+              <Text style={styles.scan3DFallbackButtonText}>Scan 3D Item</Text>
             </TouchableOpacity>
           </>
         )}
 
         <View style={styles.infoSection}>
-          <Text style={styles.mainTitle}>{currentTape.title}</Text>
-          <Text style={styles.subTitle}>{currentTape.year} • {currentTape.format} • {currentTape.runtime || 'Unknown'}</Text>
+          <Text style={styles.mainTitle}>{currentItem.title}</Text>
+          <Text style={styles.subTitle}>{currentItem.year} • {currentItem.format} • {currentItem.runtime || 'Unknown'}</Text>
           
-          {currentTape.tagline ? (
-            <Text style={styles.tagline}>"{currentTape.tagline}"</Text>
+          {currentItem.tagline ? (
+            <Text style={styles.tagline}>"{currentItem.tagline}"</Text>
           ) : null}
 
-          {currentTape.genres && currentTape.genres.length > 0 ? (
+          {currentItem.genres && currentItem.genres.length > 0 ? (
             <View style={styles.genresContainer}>
-              {currentTape.genres.map((genre, index) => (
+              {currentItem.genres.map((genre, index) => (
                 <View key={index} style={styles.genreChip}>
                   <Text style={styles.genreText}>{genre}</Text>
                 </View>
@@ -157,60 +157,60 @@ export default function TapeDetailScreen({ route, navigation }) {
 
           <View style={styles.divider} />
 
-          {currentTape.overview ? (
+          {currentItem.overview ? (
             <>
               <Text style={styles.sectionLabel}>Overview</Text>
-              <Text style={styles.overviewText}>{currentTape.overview}</Text>
+              <Text style={styles.overviewText}>{currentItem.overview}</Text>
               <View style={styles.divider} />
             </>
           ) : null}
 
           <View style={styles.crewGrid}>
-            <DetailItem icon="person-outline" label="Director" value={currentTape.director || 'Unknown'} />
-            <DetailItem icon="create-outline" label="Writer" value={currentTape.writer || 'Unknown'} />
-            <DetailItem icon="calendar-outline" label="Release Date" value={currentTape.releaseDate || 'Unknown'} />
-            <DetailItem icon="business-outline" label="Distributor" value={currentTape.distributor || 'Unknown'} />
+            <DetailItem icon="person-outline" label="Director" value={currentItem.director || 'Unknown'} />
+            <DetailItem icon="create-outline" label="Writer" value={currentItem.writer || 'Unknown'} />
+            <DetailItem icon="calendar-outline" label="Release Date" value={currentItem.releaseDate || 'Unknown'} />
+            <DetailItem icon="business-outline" label="Distributor" value={currentItem.distributor || 'Unknown'} />
           </View>
 
           <View style={styles.divider} />
 
-          {currentTape.productionCompanies && currentTape.productionCompanies.length > 0 ? (
+          {currentItem.productionCompanies && currentItem.productionCompanies.length > 0 ? (
             <>
               <Text style={styles.sectionLabel}>Production</Text>
-              <Text style={styles.detailValue}>{currentTape.productionCompanies.join(', ')}</Text>
+              <Text style={styles.detailValue}>{currentItem.productionCompanies.join(', ')}</Text>
               <View style={styles.divider} />
             </>
           ) : null}
 
-          {(currentTape.budget || currentTape.revenue) ? (
+          {(currentItem.budget || currentItem.revenue) ? (
             <>
               <Text style={styles.sectionLabel}>Financials</Text>
               <View style={styles.financialRow}>
                 <View style={styles.financialItem}>
                   <Text style={styles.financialLabel}>Budget</Text>
-                  <Text style={styles.financialValue}>{currentTape.budget || 'Unknown'}</Text>
+                  <Text style={styles.financialValue}>{currentItem.budget || 'Unknown'}</Text>
                 </View>
                 <View style={styles.financialItem}>
                   <Text style={styles.financialLabel}>Revenue</Text>
-                  <Text style={styles.financialValue}>{currentTape.revenue || 'Unknown'}</Text>
+                  <Text style={styles.financialValue}>{currentItem.revenue || 'Unknown'}</Text>
                 </View>
               </View>
               <View style={styles.divider} />
             </>
           ) : null}
 
-          {currentTape.notes ? (
+          {currentItem.notes ? (
             <>
               <Text style={styles.sectionLabel}>Notes / Condition</Text>
-              <Text style={styles.notesText}>{currentTape.notes}</Text>
+              <Text style={styles.notesText}>{currentItem.notes}</Text>
               <View style={styles.divider} />
             </>
           ) : null}
 
-          {currentTape.barcode ? (
+          {currentItem.barcode ? (
             <View style={styles.barcodeRow}>
               <Ionicons name="barcode-outline" size={18} color="#888888" />
-              <Text style={styles.barcodeText}> {currentTape.barcode}</Text>
+              <Text style={styles.barcodeText}> {currentItem.barcode}</Text>
             </View>
           ) : null}
         </View>

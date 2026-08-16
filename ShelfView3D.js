@@ -11,9 +11,9 @@ import {
 } from 'react-native';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { VHSTape } from './Tape3DViewer';
+import { MediaItem3D } from './Media3DViewer';
 import { Ionicons } from '@expo/vector-icons';
-import { getModel, resolveModelId, getCameraDistance } from './mediaModels';
+import { getModel, resolveModelId, getCameraDistance, DEFAULT_MODEL_ID } from './mediaModels';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -68,11 +68,11 @@ function clamp(value, min, max) {
 }
 
 /* ============================================================
- * INDIVIDUAL 3D TAPE
+ * INDIVIDUAL 3D ITEM
  * ============================================================ */
 
-function TapeOnShelf({
-  tape,
+function ItemOnShelf({
+  item,
   position,
   orientation,
   isFocused,
@@ -201,7 +201,7 @@ function TapeOnShelf({
   return (
     <group ref={groupRef} position={position}>
       {renderFull || isFocused ? (
-        <VHSTape textureMap={tape.textureMap} modelId={modelId} />
+        <MediaItem3D textureMap={item.textureMap} modelId={modelId} />
       ) : (
         <mesh>
           <boxGeometry args={[placeholderWidth, model.dims.h, model.dims.d]} />
@@ -279,16 +279,16 @@ function ShelfScene({
 
       <pointLight position={[0, 3, 3]} intensity={0.25} distance={12} />
 
-      {items.map((tape, tapeIndex) => {
-        const wx = tapeIndex * spacing;
+      {items.map((item, itemIndex) => {
+        const wx = itemIndex * spacing;
 
         return (
-          <TapeOnShelf
-            key={tape.id}
-            tape={tape}
+          <ItemOnShelf
+            key={item.id}
+            item={item}
             position={[wx, 0, 0]}
             orientation={orientation}
-            isFocused={focusedId === tape.id}
+            isFocused={focusedId === item.id}
             cullDistance={cullDistance}
             dragRotationRef={dragRotationRef}
             modelId={modelId}
@@ -306,28 +306,28 @@ function ShelfScene({
  * ============================================================ */
 
 function ShelfHitTargets({ items, orientation, onFocus, contentWidth, spacingPx, model }) {
-  const tapeHitHeight = model.dims.h * PIXELS_PER_UNIT;
+  const itemHitHeight = model.dims.h * PIXELS_PER_UNIT;
   const hitWidth = getFaceWidth(model, orientation) * PIXELS_PER_UNIT * HIT_TARGET_WIDTH_SCALE;
 
   return (
     <View style={{ width: contentWidth, height: SCREEN_HEIGHT }}>
-      {items.map((tape, tapeIndex) => {
-        const centerX = SCREEN_WIDTH / 2 + tapeIndex * spacingPx;
+      {items.map((item, itemIndex) => {
+        const centerX = SCREEN_WIDTH / 2 + itemIndex * spacingPx;
         const left = centerX - hitWidth / 2;
 
-        const top = SCREEN_HEIGHT / 2 - tapeHitHeight / 2;
+        const top = SCREEN_HEIGHT / 2 - itemHitHeight / 2;
 
         return (
           <TouchableOpacity
-            key={`hit-${tape.id}`}
+            key={`hit-${item.id}`}
             activeOpacity={1}
-            onPress={() => onFocus(tape.id)}
+            onPress={() => onFocus(item.id)}
             style={{
               position: 'absolute',
               left,
               top,
               width: hitWidth,
-              height: tapeHitHeight,
+              height: itemHitHeight,
             }}
           />
         );
@@ -353,7 +353,7 @@ export default function ShelfView3D({
   const scrollXRef = useRef(0);
   const snapCameraRef = useRef(true);
   const scrollViewRef = useRef(null);
-  const randomTapeTimeoutRef = useRef(null);
+  const randomItemTimeoutRef = useRef(null);
 
   const dragRotationRef = useRef({ x: 0, y: 0, z: 0 });
   const dragBaseRotationRef = useRef({ x: 0, y: 0, z: 0 });
@@ -362,7 +362,7 @@ export default function ShelfView3D({
   const firstItem = items[0];
   const modelId = firstItem 
     ? (firstItem.modelId || firstItem.textureMap?.modelId || resolveModelId(firstItem.format, firstItem.caseType)) 
-    : 'vhs';
+    : DEFAULT_MODEL_ID;
   const model = getModel(modelId);
 
   // Dynamically scale camera distances based on the physical size of the media.
@@ -370,10 +370,10 @@ export default function ShelfView3D({
   const defaultCameraZ = maxDim * 2.7; // resting/browsing distance — unchanged, not reported as an issue
 
   // The camera doesn't move on focus (see ShelfScene above) — it stays at
-  // defaultCameraZ, and the tape animates to focusZ. So
-  // (defaultCameraZ - focusZ) is the effective camera-to-tape distance once
+  // defaultCameraZ, and the item animates to focusZ. So
+  // (defaultCameraZ - focusZ) is the effective camera-to-item distance once
   // focused. getCameraDistance (mediaModels.js) is the same fit math used by
-  // the standalone Tape3DViewer, so focus mode here frames each model
+  // the standalone Media3DViewer, so focus mode here frames each model
   // identically to the fullscreen viewer, and any per-type tuning
   // (model.cameraFit) only has to be set once, in one place.
   const screenAspect = SCREEN_WIDTH / SCREEN_HEIGHT;
@@ -399,8 +399,8 @@ export default function ShelfView3D({
 
   useEffect(() => {
     return () => {
-      if (randomTapeTimeoutRef.current) {
-        clearTimeout(randomTapeTimeoutRef.current);
+      if (randomItemTimeoutRef.current) {
+        clearTimeout(randomItemTimeoutRef.current);
       }
     };
   }, []);
@@ -441,20 +441,20 @@ export default function ShelfView3D({
   };
 
   const handleFocus = id => {
-    if (randomTapeTimeoutRef.current) {
-      clearTimeout(randomTapeTimeoutRef.current);
-      randomTapeTimeoutRef.current = null;
+    if (randomItemTimeoutRef.current) {
+      clearTimeout(randomItemTimeoutRef.current);
+      randomItemTimeoutRef.current = null;
     }
     setFocusedId(id);
   };
 
   const handleReturn = () => setFocusedId(null);
 
-  const handleRandomTape = () => {
+  const handleRandomItem = () => {
     if (items.length === 0 || focusedId) return;
 
     const randomIndex = Math.floor(Math.random() * items.length);
-    const randomTape = items[randomIndex];
+    const randomItem = items[randomIndex];
     const targetScrollX = randomIndex * spacingPx;
 
     if (scrollViewRef.current) {
@@ -463,12 +463,12 @@ export default function ShelfView3D({
         animated: true,
       });
 
-      if (randomTapeTimeoutRef.current) {
-        clearTimeout(randomTapeTimeoutRef.current);
+      if (randomItemTimeoutRef.current) {
+        clearTimeout(randomItemTimeoutRef.current);
       }
 
-      randomTapeTimeoutRef.current = setTimeout(() => {
-        setFocusedId(randomTape.id);
+      randomItemTimeoutRef.current = setTimeout(() => {
+        setFocusedId(randomItem.id);
       }, 600);
     }
   };
@@ -606,7 +606,7 @@ export default function ShelfView3D({
           <View style={styles.topBarRight}>
             <TouchableOpacity
               style={styles.iconButton}
-              onPress={handleRandomTape}
+              onPress={handleRandomItem}
             >
               <Ionicons name="shuffle-outline" size={22} color="#ffffff" />
             </TouchableOpacity>

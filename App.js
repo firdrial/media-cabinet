@@ -3,12 +3,11 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import HomeScreen from './HomeScreen';
 import CollectionDetailScreen from './CollectionDetailScreen';
-import AddTapeScreen from './add-tape';
-import BarcodeScanner from './BarcodeScanner';
+import ItemFormScreen from './ItemFormScreen';
 import SearchScreen from './SearchScreen';
-import TapeDetailScreen from './TapeDetailScreen';
-import Tape3DViewerScreen from './Tape3DViewerScreen';
-import ReelScanScreen from './ReelScanScreen';
+import ItemDetailScreen from './ItemDetailScreen';
+import Media3DViewerScreen from './Media3DViewerScreen';
+import MediaScanScreen from './MediaScanScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -33,16 +32,11 @@ export default function App() {
           options={{ headerShown: false }}
         />
         <Stack.Screen 
-          name="AddTape" 
-          component={AddTapeScreen} 
+          name="AddItem" 
+          component={ItemFormScreen} 
           options={({ route }) => ({ 
-            title: route.params?.tape ? 'Edit Item' : 'Add New Item' 
+            title: route.params?.item ? 'Edit Item' : 'Add New Item' 
           })}
-        />
-        <Stack.Screen 
-          name="BarcodeScanner" 
-          component={BarcodeScanner} 
-          options={{ title: 'Barcode Scanner', headerBackTitle: 'Back' }} 
         />
         <Stack.Screen 
           name="Search" 
@@ -50,18 +44,18 @@ export default function App() {
           options={{ title: 'Search TMDB' }} 
         />
         <Stack.Screen 
-          name="TapeDetail" 
-          component={TapeDetailScreen} 
+          name="ItemDetail" 
+          component={ItemDetailScreen} 
           options={{ headerShown: false }} 
         />
         <Stack.Screen 
-          name="Tape3DViewer" 
-          component={Tape3DViewerScreen} 
+          name="Media3DViewer" 
+          component={Media3DViewerScreen} 
           options={{ headerShown: false }} 
         />
         <Stack.Screen 
-          name="ReelScan" 
-          component={ReelScanScreen} 
+          name="MediaScan" 
+          component={MediaScanScreen} 
           options={{ headerShown: false }} 
         />
       </Stack.Navigator>

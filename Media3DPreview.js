@@ -2,8 +2,8 @@ import React, { Suspense, useState, useMemo } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, useProgress } from '@react-three/drei';
-import { VHSTape } from './Tape3DViewer';
-import { getModel } from './mediaModels';
+import { MediaItem3D } from './Media3DViewer';
+import { getModel, DEFAULT_MODEL_ID } from './mediaModels';
 
 function PreviewLoader() {
   const { active } = useProgress();
@@ -15,13 +15,13 @@ function PreviewLoader() {
   );
 }
 
-export default function Tape3DPreview({ textureMap, modelId, style }) {
+export default function Media3DPreview({ textureMap, modelId, style }) {
   const [isRotating, setIsRotating] = useState(true);
 
-  const activeModelId = modelId || textureMap?.modelId || 'vhs';
+  const activeModelId = modelId || textureMap?.modelId || DEFAULT_MODEL_ID;
 
   // Dynamically adjust camera distance based on the model's largest dimension.
-  // VHS (1.87 tall) -> ~3.5 distance. Vinyl (3.14 tall) -> ~5.9 distance.
+  // e.g., Standard Media (1.87 tall) -> ~3.5 distance. Vinyl (3.14 tall) -> ~5.9 distance.
   const cameraZ = useMemo(() => {
     const dims = getModel(activeModelId).dims;
     const maxDim = Math.max(dims.w, dims.h, dims.d);
@@ -45,7 +45,7 @@ export default function Tape3DPreview({ textureMap, modelId, style }) {
         <Suspense fallback={null}>
           {/* Tapping the 3D model itself toggles rotation */}
           <group onClick={toggleRotation}>
-            <VHSTape textureMap={textureMap} modelId={activeModelId} />
+            <MediaItem3D textureMap={textureMap} modelId={activeModelId} />
           </group>
         </Suspense>
         <OrbitControls 

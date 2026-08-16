@@ -7,7 +7,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { detectQuad, warpQuad } from './modules/quad-detect';
 import GuideBox3D from './GuideBox3D';
-import { getScanSteps, getWarpOutputSizes } from './mediaModels';
+import { getScanSteps, getWarpOutputSizes, DEFAULT_MODEL_ID } from './mediaModels';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -108,8 +108,8 @@ function CornerQuadrant({ uri, imgW, imgH, anchor, corners, scale, qIndex, respo
   );
 }
 
-export default function ReelScanScreen({ navigation, route }) {
-  const modelId = route.params?.modelId || 'vhs';
+export default function MediaScanScreen({ navigation, route }) {
+  const modelId = route.params?.modelId || DEFAULT_MODEL_ID;
   const SCAN_STEPS = useMemo(() => getScanSteps(modelId), [modelId]);
   const WARP_OUTPUT_SIZES = useMemo(() => getWarpOutputSizes(modelId), [modelId]);
 
@@ -216,11 +216,11 @@ export default function ReelScanScreen({ navigation, route }) {
           if (distinct && isConvexQuadJS(ordered)) {
             return ordered;
           }
-          console.warn('[ReelScan] detected quad failed sanity check (distinct/convex), using guess');
+          console.warn('[MediaScan] detected quad failed sanity check (distinct/convex), using guess');
         }
       }
     } catch (e) {
-      console.warn('[ReelScan] detectQuad failed:', e.message);
+      console.warn('[MediaScan] detectQuad failed:', e.message);
     }
     return initQuad;
   };
@@ -371,7 +371,8 @@ export default function ReelScanScreen({ navigation, route }) {
         { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
       );
 
-      const scanDirectory = new Directory(Paths.document, 'tape-scans');
+      // Renamed local directory from 'tape-scans' to 'media-scans'
+      const scanDirectory = new Directory(Paths.document, 'media-scans');
       if (!scanDirectory.exists) {
         scanDirectory.create({ intermediates: true, idempotent: true });
       }
@@ -417,7 +418,7 @@ export default function ReelScanScreen({ navigation, route }) {
           isWarped = true;
         }
       } catch (warpError) {
-        console.warn(`[ReelScan] Could not pre-warp ${currentStep.key}`, warpError);
+        console.warn(`[MediaScan] Could not pre-warp ${currentStep.key}`, warpError);
       }
 
       const updatedImages = {
@@ -447,7 +448,7 @@ export default function ReelScanScreen({ navigation, route }) {
           await AsyncStorage.setItem('pending_texture_map', JSON.stringify(finalTextureMap));
           navigation.goBack();
         } else {
-          navigation.replace('Tape3DViewer', {
+          navigation.replace('Media3DViewer', {
             textureMap: finalTextureMap,
             title: 'My 3D Scan',
             modelId,
@@ -500,7 +501,7 @@ export default function ReelScanScreen({ navigation, route }) {
   }, [permission]);
 
   useEffect(() => {
-    console.log('[ReelScan] screen v7-onnx mounted');
+    console.log('[MediaScan] screen v7-onnx mounted');
   }, []);
 
   if (!permission) return <View style={styles.center}><ActivityIndicator size="large" color="#e07a5f" /></View>;

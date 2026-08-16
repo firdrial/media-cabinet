@@ -16,9 +16,18 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { loadTapes as loadStoredTapes } from './tapeStorage';
+import { loadItems as loadStoredItems } from './mediaStorage';
 
 const { height } = Dimensions.get('window');
+
+// ---------------------------------------------------------
+// STORAGE KEYS & MIGRATION CONSTANTS
+// ---------------------------------------------------------
+const PREFS_KEY = 'media_cabinet_preferences';
+const LEGACY_PREFS_KEY = 'vhs_tracker_preferences';
+
+const COLLECTIONS_KEY = 'media_collections';
+const LEGACY_COLLECTIONS_KEY = 'vhs_collections';
 
 const DEFAULT_PREFERENCES = {
   sortBy: 'dateAdded',
@@ -43,7 +52,7 @@ const getIconForType = (type) => {
 };
 
 export default function HomeScreen({ navigation }) {
-  const [tapes, setTapes] = useState([]);
+  const [items, setItems] = useState([]);
   const [collections, setCollections] = useState([]);
   const [filteredCollections, setFilteredCollections] = useState([]);
   const [collectionSearch, setCollectionSearch] = useState('');
@@ -55,14 +64,25 @@ export default function HomeScreen({ navigation }) {
   const [preferences, setPreferences] = useState(DEFAULT_PREFERENCES);
 
   const [collType, setCollType] = useState('VHS');
-  const [collTitle, setCollTitle] = useState('My VHS Collection');
+  const [collTitle, setCollTitle] = useState('My Media Collection');
   const [collDetails, setCollDetails] = useState('');
   const [collTags, setCollTags] = useState('');
   const [editingCollectionId, setEditingCollectionId] = useState(null);
 
   const loadPreferences = async () => {
     try {
-      const prefsJSON = await AsyncStorage.getItem('vhs_tracker_preferences');
+      let prefsJSON = await AsyncStorage.getItem(PREFS_KEY);
+      
+      // Migration: Check for legacy preferences key
+      if (!prefsJSON) {
+        const legacyPrefsJSON = await AsyncStorage.getItem(LEGACY_PREFS_KEY);
+        if (legacyPrefsJSON) {
+          await AsyncStorage.setItem(PREFS_KEY, legacyPrefsJSON);
+          await AsyncStorage.removeItem(LEGACY_PREFS_KEY);
+          prefsJSON = legacyPrefsJSON;
+        }
+      }
+
       if (prefsJSON) {
         const parsed = JSON.parse(prefsJSON);
         setPreferences({
@@ -81,25 +101,35 @@ export default function HomeScreen({ navigation }) {
   const savePreferences = async (newPrefs) => {
     try {
       setPreferences(newPrefs);
-      await AsyncStorage.setItem('vhs_tracker_preferences', JSON.stringify(newPrefs));
+      await AsyncStorage.setItem(PREFS_KEY, JSON.stringify(newPrefs));
     } catch (error) {
       Alert.alert('Error', 'Failed to save preferences');
     }
   };
 
-  const loadTapes = async () => {
+  const loadItems = async () => {
     try {
-      setTapes(await loadStoredTapes());
+      setItems(await loadStoredItems());
     } catch (error) {
-      console.error('Failed to load tapes', error);
+      console.error('Failed to load items', error);
       Alert.alert('Error', 'Failed to load collection');
     }
   };
 
-
   const loadCollections = async () => {
     try {
-      const collectionsJSON = await AsyncStorage.getItem('vhs_collections');
+      let collectionsJSON = await AsyncStorage.getItem(COLLECTIONS_KEY);
+      
+      // Migration: Check for legacy collections key
+      if (!collectionsJSON) {
+        const legacyCollectionsJSON = await AsyncStorage.getItem(LEGACY_COLLECTIONS_KEY);
+        if (legacyCollectionsJSON) {
+          await AsyncStorage.setItem(COLLECTIONS_KEY, legacyCollectionsJSON);
+          await AsyncStorage.removeItem(LEGACY_COLLECTIONS_KEY);
+          collectionsJSON = legacyCollectionsJSON;
+        }
+      }
+
       if (collectionsJSON) {
         setCollections(JSON.parse(collectionsJSON));
       } else {
@@ -113,7 +143,7 @@ export default function HomeScreen({ navigation }) {
   useEffect(() => {
     const init = async () => {
       await loadPreferences();
-      await loadTapes();
+      await loadItems();
       await loadCollections();
     };
     init();
@@ -121,7 +151,7 @@ export default function HomeScreen({ navigation }) {
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
-      loadTapes();
+      loadItems();
       loadCollections();
       loadPreferences();
     });
@@ -150,7 +180,7 @@ export default function HomeScreen({ navigation }) {
   const selectType = (type) => {
     const oldType = collType;
     setCollType(type);
-    if (collTitle === `My ${oldType} Collection` || collTitle === 'My Mixed Collection' || collTitle === 'My Collection') {
+    if (collTitle === `My ${oldType} Collection` || collTitle === 'My Mixed Collection' || collTitle === 'My Collection' || collTitle === 'My Media Collection') {
       setCollTitle(`My ${type} Collection`);
     }
   };
@@ -167,7 +197,7 @@ export default function HomeScreen({ navigation }) {
 
   const resetAndCloseCollectionModal = () => {
     setCollType('VHS');
-    setCollTitle('My VHS Collection');
+    setCollTitle('My Media Collection');
     setCollDetails('');
     setCollTags('');
     setEditingCollectionId(null);
@@ -195,7 +225,7 @@ export default function HomeScreen({ navigation }) {
         return c;
       });
       setCollections(updated);
-      AsyncStorage.setItem('vhs_collections', JSON.stringify(updated));
+      AsyncStorage.setItem(COLLECTIONS_KEY, JSON.stringify(updated));
       resetAndCloseCollectionModal();
       return;
     }
@@ -218,7 +248,7 @@ export default function HomeScreen({ navigation }) {
                 tags: collTags.split(',').map(t => t.trim()).filter(Boolean)
               };
               setCollections(updated);
-              AsyncStorage.setItem('vhs_collections', JSON.stringify(updated));
+              AsyncStorage.setItem(COLLECTIONS_KEY, JSON.stringify(updated));
               resetAndCloseCollectionModal();
             }
           },
@@ -245,7 +275,7 @@ export default function HomeScreen({ navigation }) {
               };
               const updated = [...collections, newCollection];
               setCollections(updated);
-              AsyncStorage.setItem('vhs_collections', JSON.stringify(updated));
+              AsyncStorage.setItem(COLLECTIONS_KEY, JSON.stringify(updated));
               resetAndCloseCollectionModal();
             }
           },
@@ -263,7 +293,7 @@ export default function HomeScreen({ navigation }) {
       };
       const updated = [...collections, newCollection];
       setCollections(updated);
-      AsyncStorage.setItem('vhs_collections', JSON.stringify(updated));
+      AsyncStorage.setItem(COLLECTIONS_KEY, JSON.stringify(updated));
       resetAndCloseCollectionModal();
     }
   };
@@ -280,7 +310,7 @@ export default function HomeScreen({ navigation }) {
           onPress: () => {
             const updated = collections.filter(c => c.id !== collectionToDelete.id);
             setCollections(updated);
-            AsyncStorage.setItem('vhs_collections', JSON.stringify(updated));
+            AsyncStorage.setItem(COLLECTIONS_KEY, JSON.stringify(updated));
           }
         }
       ]
@@ -482,7 +512,7 @@ export default function HomeScreen({ navigation }) {
                       style={styles.input} 
                       value={collTitle} 
                       onChangeText={setCollTitle} 
-                      placeholder="e.g., My VHS Collection"
+                      placeholder="e.g., My Media Collection"
                       placeholderTextColor="#666"
                     />
 
@@ -776,4 +806,4 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     textAlign: 'center',
   }
-}); 
+});
