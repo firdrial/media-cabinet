@@ -78,7 +78,9 @@ function ItemOnShelf({
   modelId,
   model,
   focusZ,
+  bodyColor,
   placeholderColor,
+  missingColor,
 }) {
   const groupRef = useRef(null);
 
@@ -199,7 +201,13 @@ function ItemOnShelf({
   return (
     <group ref={groupRef} position={position}>
       {renderFull || isFocused ? (
-        <MediaItem3D textureMap={item.textureMap} modelId={modelId} />
+        <MediaItem3D 
+          textureMap={item.textureMap} 
+          modelId={modelId} 
+          bodyColor={bodyColor}
+          placeholderColor={placeholderColor}
+          missingColor={missingColor}
+        />
       ) : (
         <mesh>
           <boxGeometry args={[placeholderWidth, model.dims.h, model.dims.d]} />
@@ -227,7 +235,9 @@ function ShelfScene({
   model,
   defaultCameraZ,
   focusZ,
+  bodyColor,
   placeholderColor,
+  missingColor,
 }) {
   useFrame(({ camera }, delta) => {
     const safeDelta = clamp(
@@ -290,7 +300,9 @@ function ShelfScene({
             modelId={modelId}
             model={model}
             focusZ={focusZ}
+            bodyColor={bodyColor}
             placeholderColor={placeholderColor}
+            missingColor={missingColor}
           />
         );
       })}
@@ -544,7 +556,9 @@ export default function ShelfView3D({
           model={model}
           defaultCameraZ={defaultCameraZ}
           focusZ={focusZ}
+          bodyColor={theme.cardBackground}
           placeholderColor={theme.cardBackground}
+          missingColor={theme.background}
         />
       </Canvas>
 

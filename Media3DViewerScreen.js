@@ -80,7 +80,7 @@ const getStyles = (theme) => ({
     pointerEvents: 'none',
   },
   title: {
-    color: theme.textPrimary,
+    color: theme.accent,
     fontSize: 16,
     lineHeight: 21,
     fontWeight: '600',
