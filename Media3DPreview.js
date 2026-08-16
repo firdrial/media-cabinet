@@ -17,7 +17,7 @@ function PreviewLoader({ theme, styles }) {
   );
 }
 
-export default function Media3DPreview({ textureMap, modelId, style }) {
+export default function Media3DPreview({ textureMap, modelId, title = '', style }) {
   const [preferences, setPreferences] = useState({ theme: DEFAULT_THEME_ID });
 
   // Load theme preferences
@@ -71,6 +71,8 @@ export default function Media3DPreview({ textureMap, modelId, style }) {
               bodyColor={theme.cardBackground}
               placeholderColor={theme.cardBackground}
               missingColor={theme.background}
+              title={title} // Pass title down to render on generated spines
+              spineTextColor={theme.accent} // <-- Pass theme color down for spine text
             />
           </group>
         </Suspense>

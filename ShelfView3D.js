@@ -81,6 +81,7 @@ function ItemOnShelf({
   bodyColor,
   placeholderColor,
   missingColor,
+  spineTextColor, // <-- Added to thread theme color
 }) {
   const groupRef = useRef(null);
 
@@ -207,6 +208,8 @@ function ItemOnShelf({
           bodyColor={bodyColor}
           placeholderColor={placeholderColor}
           missingColor={missingColor}
+          title={item.title || item.name || ''}
+          spineTextColor={spineTextColor} // <-- Pass theme color down
         />
       ) : (
         <mesh>
@@ -238,6 +241,7 @@ function ShelfScene({
   bodyColor,
   placeholderColor,
   missingColor,
+  spineTextColor, // <-- Added to thread theme color
 }) {
   useFrame(({ camera }, delta) => {
     const safeDelta = clamp(
@@ -303,6 +307,7 @@ function ShelfScene({
             bodyColor={bodyColor}
             placeholderColor={placeholderColor}
             missingColor={missingColor}
+            spineTextColor={spineTextColor} // <-- Pass theme color down
           />
         );
       })}
@@ -559,6 +564,7 @@ export default function ShelfView3D({
           bodyColor={theme.cardBackground}
           placeholderColor={theme.cardBackground}
           missingColor={theme.background}
+          spineTextColor={theme.accent} // <-- Pass theme color down
         />
       </Canvas>
 

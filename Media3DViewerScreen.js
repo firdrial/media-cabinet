@@ -31,7 +31,8 @@ const Media3DViewerScreen = ({ route, navigation }) => {
   return (
     <View style={styles.container}>
       {/* 3D Canvas */}
-      <Media3DViewer textureMap={textureMap} modelId={activeModelId} />
+      {/* Pass the title prop so the 3D renderer can draw it on generated spines */}
+      <Media3DViewer textureMap={textureMap} modelId={activeModelId} title={title} />
 
       {/* UI Overlay */}
       <View style={styles.overlay}>

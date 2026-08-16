@@ -4,7 +4,7 @@ import {
   StyleSheet,
   Dimensions,
   ActivityIndicator,
-  Text,
+  Text as RNText, // Renamed to avoid collision with drei Text
 } from 'react-native';
 
 import { Canvas } from '@react-three/fiber';
@@ -12,6 +12,8 @@ import {
   useTexture,
   OrbitControls,
   useProgress,
+  Center,
+  Text3D, // Swapped from Text to Text3D for React Native compatibility
 } from '@react-three/drei';
 
 import * as THREE from 'three';
@@ -199,6 +201,51 @@ function ResolvedFaces({ textureMap, modelId, placeholderColor, missingColor }) 
 }
 
 /**
+ * Renders 3D text on faces defined in mediaModels.js with 
+ * `generated: { kind: 'spineLabel' }`. Uses Text3D to bypass 
+ * React Native's lack of a DOM canvas.
+ */
+function SpineLabels({ modelId, title, spineTextColor = '#ffffff' }) {
+  const configs = useMemo(() => getFaceConfigs(modelId), [modelId]);
+  const model = useMemo(() => getModel(modelId), [modelId]);
+
+  if (!title || !model) return null;
+
+  // Find only faces marked as spine labels in the registry
+  const spineConfigs = configs.filter(
+    c => model.faces[c.key]?.generated?.kind === 'spineLabel'
+  );
+
+  return spineConfigs.map(config => {
+    // Dynamically calculate font size so the text fits inside the spine's dimensions.
+    // Reduced multipliers to 0.6 and 0.7 to make the text slightly smaller/more elegant.
+    const maxFontSize = config.width * 0.6; // Cap height cannot exceed 60% of the spine's thickness
+    const fitFontSize = (config.height * 0.7) / (Math.max(1, title.length) * 0.6); // Length must fit 70% of spine height
+    const fontSize = Math.min(maxFontSize, fitFontSize);
+
+    return (
+      <group key={config.key} position={config.position} rotation={config.rotation}>
+        <group position={[0, 0, 0.002]}>
+          <Center>
+            <Text3D
+              font="https://threejs.org/examples/fonts/helvetiker_regular.typeface.json"
+              size={fontSize}
+              height={0.001} // Keep it flat
+              curveSegments={1} // Low poly for mobile performance
+              bevelEnabled={false}
+              rotation={[0, 0, Math.PI / 2]} // Rotate 90 degrees for vertical text
+            >
+              {title}
+              <meshStandardMaterial color={spineTextColor} />
+            </Text3D>
+          </Center>
+        </group>
+      </group>
+    );
+  });
+}
+
+/**
  * A rigid physical media body.
  */
 export function MediaItem3D({ 
@@ -206,7 +253,9 @@ export function MediaItem3D({
   modelId = DEFAULT_MODEL_ID, 
   bodyColor = '#171717',
   placeholderColor = '#303030',
-  missingColor = '#151515'
+  missingColor = '#151515',
+  title = '',
+  spineTextColor = '#ffffff', // <-- Added for theme color support
 }) {
   const map = textureMap || EMPTY_TEXTURE_MAP;
   const dims = getModel(modelId).dims;
@@ -231,6 +280,9 @@ export function MediaItem3D({
         placeholderColor={placeholderColor}
         missingColor={missingColor}
       />
+
+      {/* Renders text on generated spines */}
+      <SpineLabels modelId={modelId} title={title} spineTextColor={spineTextColor} />
     </group>
   );
 }
@@ -246,9 +298,9 @@ function Loader({ theme, styles }) {
         size="large"
         color={theme.accent}
       />
-      <Text style={styles.loadingText}>
+      <RNText style={styles.loadingText}>
         Mapping Textures...
-      </Text>
+      </RNText>
     </View>
   );
 }
@@ -256,6 +308,7 @@ function Loader({ theme, styles }) {
 export default function Media3DViewer({
   textureMap,
   modelId = DEFAULT_MODEL_ID,
+  title = '',
 }) {
   const [preferences, setPreferences] = useState({ theme: DEFAULT_THEME_ID });
 
@@ -320,6 +373,8 @@ export default function Media3DViewer({
             bodyColor={theme.cardBackground}
             placeholderColor={theme.cardBackground}
             missingColor={theme.background}
+            title={title}
+            spineTextColor={theme.accent} // <-- Pass theme color down
           />
         </Suspense>
 

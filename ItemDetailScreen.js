@@ -188,7 +188,7 @@ export default function ItemDetailScreen({ route, navigation }) {
       <View style={styles.content}>
         {currentItem.textureMap ? (
           <View style={styles.previewWrapper}>
-            <Media3DPreview textureMap={currentItem.textureMap} modelId={activeModelId} style={{ width: '100%', height: 250 }} />
+            <Media3DPreview textureMap={currentItem.textureMap} modelId={activeModelId} style={{ width: '100%', height: 250 }} title={item.title} />
             
             {/* Fullscreen Overlay Button (Bottom Right) */}
             <TouchableOpacity 

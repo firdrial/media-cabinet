@@ -1,3 +1,30 @@
+// ============================================================
+// POLYFILL FOR @react-three/drei IN REACT NATIVE
+// Stops Metro from crashing when it evaluates web-only modules 
+// (like PositionalAudio) during the bundle process.
+// ============================================================
+if (typeof document === 'undefined') {
+  global.document = {
+    createElement: () => ({
+      getContext: () => ({ measureText: () => ({ width: 0 }), canvas: {} }),
+      style: {},
+    }),
+    head: {},
+    body: {},
+  };
+}
+if (typeof window === 'undefined') {
+  global.window = {};
+}
+global.window.AudioContext = global.window.AudioContext || class AudioContext {
+  constructor() { this.destination = {}; }
+  createGain() { return { connect: () => {}, gain: { value: 0 } }; }
+  createPanner() { return { connect: () => {} }; }
+};
+if (typeof Worker === 'undefined') {
+  global.Worker = class Worker { constructor() {} postMessage() {} terminate() {} };
+}
+
 import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
