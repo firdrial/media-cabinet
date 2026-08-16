@@ -81,7 +81,7 @@ function ItemOnShelf({
   bodyColor,
   placeholderColor,
   missingColor,
-  spineTextColor, // <-- Added to thread theme color
+  spineTextColor,
 }) {
   const groupRef = useRef(null);
 
@@ -209,7 +209,7 @@ function ItemOnShelf({
           placeholderColor={placeholderColor}
           missingColor={missingColor}
           title={item.title || item.name || ''}
-          spineTextColor={spineTextColor} // <-- Pass theme color down
+          spineTextColor={spineTextColor}
         />
       ) : (
         <mesh>
@@ -241,7 +241,7 @@ function ShelfScene({
   bodyColor,
   placeholderColor,
   missingColor,
-  spineTextColor, // <-- Added to thread theme color
+  spineTextColor,
 }) {
   useFrame(({ camera }, delta) => {
     const safeDelta = clamp(
@@ -307,7 +307,7 @@ function ShelfScene({
             bodyColor={bodyColor}
             placeholderColor={placeholderColor}
             missingColor={missingColor}
-            spineTextColor={spineTextColor} // <-- Pass theme color down
+            spineTextColor={spineTextColor}
           />
         );
       })}
@@ -564,7 +564,7 @@ export default function ShelfView3D({
           bodyColor={theme.cardBackground}
           placeholderColor={theme.cardBackground}
           missingColor={theme.background}
-          spineTextColor={theme.accent} // <-- Pass theme color down
+          spineTextColor={theme.accent}
         />
       </Canvas>
 
@@ -629,7 +629,7 @@ export default function ShelfView3D({
             onPress={onBack}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="chevron-back" size={24} color={theme.textPrimary} />
+            <Ionicons name="chevron-back" size={24} color={theme.pillText} />
           </TouchableOpacity>
 
           <View style={styles.topBarRight}>
@@ -637,21 +637,21 @@ export default function ShelfView3D({
               style={styles.iconButton}
               onPress={handleRandomItem}
             >
-              <Ionicons name="shuffle-outline" size={22} color={theme.textPrimary} />
+              <Ionicons name="shuffle-outline" size={22} color={theme.pillText} />
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.iconButton}
               onPress={() => setShowViewMenu(true)}
             >
-              <Ionicons name="cube-outline" size={22} color={theme.textPrimary} />
+              <Ionicons name="cube-outline" size={22} color={theme.pillText} />
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.iconButton}
               onPress={onOpenFilters}
             >
-              <Ionicons name="options-outline" size={22} color={theme.textPrimary} />
+              <Ionicons name="options-outline" size={22} color={theme.pillText} />
             </TouchableOpacity>
           </View>
         </View>
@@ -717,7 +717,7 @@ export default function ShelfView3D({
                   : 'book-outline'
               }
               size={22}
-              color={theme.textPrimary}
+              color={theme.pillText}
             />
 
             <Text style={styles.controlText}>
@@ -771,9 +771,9 @@ const getStyles = (theme) => ({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: theme.backdrop,
+    backgroundColor: theme.pillBackground,
     borderWidth: 1,
-    borderColor: theme.sheetBorder,
+    borderColor: theme.pillBorder,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -839,12 +839,12 @@ const getStyles = (theme) => ({
   controlButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.backdrop,
+    backgroundColor: theme.pillBackground,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: theme.sheetBorder,
+    borderColor: theme.pillBorder,
     gap: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
@@ -853,7 +853,7 @@ const getStyles = (theme) => ({
     elevation: 8,
   },
   controlText: {
-    color: theme.textPrimary,
+    color: theme.pillText,
     fontSize: 14,
     fontWeight: '700',
   },

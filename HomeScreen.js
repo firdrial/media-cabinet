@@ -38,7 +38,8 @@ const DEFAULT_PREFERENCES = {
   theme: DEFAULT_THEME_ID
 };
 
-const COLLECTION_TYPES = ['CD', 'VHS', 'DVD', 'Blu-Ray', 'Laserdisc', 'Vinyl Record'];
+// Standardized 'LaserDisc' to match mediaModels.js FORMAT_DEFAULT_MODEL
+const COLLECTION_TYPES = ['CD', 'VHS', 'DVD', 'Blu-Ray', 'LaserDisc', 'Vinyl Record'];
 
 const getIconForType = (type) => {
   switch (type) {
@@ -46,7 +47,7 @@ const getIconForType = (type) => {
     case 'VHS': return 'film';
     case 'DVD': return 'play-circle';
     case 'Blu-Ray': return 'videocam';
-    case 'Laserdisc': return 'tv';
+    case 'LaserDisc': return 'tv'; // Updated capitalization
     case 'Vinyl Record': return 'musical-notes';
     default: return 'folder';
   }

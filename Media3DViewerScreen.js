@@ -40,7 +40,7 @@ const Media3DViewerScreen = ({ route, navigation }) => {
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
-          <Ionicons name="arrow-back" size={24} color={theme.textPrimary} />
+          <Ionicons name="arrow-back" size={24} color={theme.pillText} />
         </TouchableOpacity>
 
         <View style={styles.titleContainer}>
@@ -68,7 +68,9 @@ const getStyles = (theme) => ({
     position: 'absolute',
     top: 50,
     left: 20,
-    backgroundColor: theme.backdrop,
+    backgroundColor: theme.pillBackground,
+    borderWidth: 1,
+    borderColor: theme.pillBorder,
     borderRadius: 20,
     padding: 8,
     pointerEvents: 'auto', // Re-enables touches for the button

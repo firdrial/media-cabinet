@@ -195,7 +195,7 @@ export default function ItemDetailScreen({ route, navigation }) {
               style={styles.overlayButton} 
               onPress={() => navigation.navigate('Media3DViewer', { textureMap: currentItem.textureMap, title: currentItem.title, modelId: activeModelId })}
             >
-              <Ionicons name="expand-outline" size={22} color={theme.textPrimary} />
+              <Ionicons name="expand-outline" size={22} color={theme.pillText} />
             </TouchableOpacity>
           </View>
         ) : (
@@ -355,11 +355,11 @@ const getStyles = (theme) => ({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: theme.backdrop,
+    backgroundColor: theme.pillBackground,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: theme.cardBorder,
+    borderColor: theme.pillBorder,
   },
 
   scan3DFallbackButton: {

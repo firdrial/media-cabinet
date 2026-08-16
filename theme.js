@@ -31,6 +31,7 @@
  *   textPrimary / textSecondary    sheet titles / labels   (#ffffff / #aaaaaa)
  *   textMuted / textFaint          #888888 / #666666
  *   emptyIcon                      empty-state icon        (#333333)
+ *   pillBackground/Border/Text     3D overlay pill buttons (rgba(0,0,0,0.6) / #333333 / #ffffff)
  * ============================================================ */
 
 export const DEFAULT_THEME_ID = 'classic';
@@ -70,6 +71,11 @@ const BASE = {
   textMuted: '#888888',
   textFaint: '#666666',
   emptyIcon: '#333333',
+  
+  // 3D Overlay Pill Buttons (Back, Shuffle, View Mode, Filter, Spine/Cover Toggle)
+  pillBackground: 'rgba(0, 0, 0, 0.6)',
+  pillBorder: '#333333',
+  pillText: '#ffffff',
 };
 
 const makeTheme = (id, label, overrides = {}) => ({
@@ -116,6 +122,10 @@ export const THEMES = {
     textMuted: '#5A6B8C',
     textFaint: '#7A89A8',
     emptyIcon: '#C4CDE0',
+    // Blockbuster Pills: Dark blue translucent bg, yellow border & text
+    pillBackground: 'rgba(11, 46, 102, 0.85)',
+    pillBorder: '#FFC72C',
+    pillText: '#FFC72C',
   }),
 
   familyVideo: makeTheme('familyVideo', 'Family Video', {
@@ -148,6 +158,10 @@ export const THEMES = {
     textMuted: '#9DBFA9',
     textFaint: '#7FA98D',
     emptyIcon: '#1E5E38',
+    // Family Video Pills: Dark green translucent bg, orange border & text
+    pillBackground: 'rgba(14, 68, 41, 0.85)',
+    pillBorder: '#F2620F',
+    pillText: '#F2620F',
   }),
 
   hollywoodVideo: makeTheme('hollywoodVideo', 'Hollywood Video', {
@@ -179,6 +193,10 @@ export const THEMES = {
     textMuted: '#9AA0C0',
     textFaint: '#7C81A8',
     emptyIcon: '#3A3E70',
+    // Hollywood Video Pills: Dark navy bg, red border, gold text
+    pillBackground: 'rgba(11, 11, 15, 0.85)',
+    pillBorder: '#FF5A4E',
+    pillText: '#D9A441',
   }),
 
   suncoast: makeTheme('suncoast', 'Suncoast', {
@@ -211,6 +229,10 @@ export const THEMES = {
     textMuted: '#8A949C',
     textFaint: '#6A747C',
     emptyIcon: '#2A343C',
+    // Suncoast Pills: Dark grey translucent bg, red border & text
+    pillBackground: 'rgba(20, 24, 28, 0.85)',
+    pillBorder: '#FF4A3D',
+    pillText: '#FF4A3D',
   }),
 
   majorVideo: makeTheme('majorVideo', 'Major Video', {
@@ -245,6 +267,10 @@ export const THEMES = {
     textMuted: '#8A7A6A',
     textFaint: '#A09080',
     emptyIcon: '#D8C8B8',
+    // Major Video Pills: Crisp white bg (since the app bg is light), red border & text
+    pillBackground: 'rgba(255, 255, 255, 0.95)',
+    pillBorder: '#C8102E',
+    pillText: '#C8102E',
   }),
 
   towerRecords: makeTheme('towerRecords', 'Tower Records', {
@@ -280,6 +306,10 @@ export const THEMES = {
     textMuted: '#8A8A7A',
     textFaint: '#A0A090',
     emptyIcon: '#C9C9B8',
+    // Tower Records Pills: Crisp white bg (since the app bg is bright yellow), red border & text
+    pillBackground: 'rgba(250, 250, 247, 0.95)',
+    pillBorder: '#CE0F2D',
+    pillText: '#CE0F2D',
   }),
 };
 

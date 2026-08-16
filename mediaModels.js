@@ -208,6 +208,63 @@ export const MEDIA_MODELS = {
       },
     },
   },
+
+  /* ----------------------------------------------------------
+   * LaserDisc — 12" jacket (12.5" square, ~5mm thick)
+   *
+   * Only front + back are scanned. The four edge faces are
+   * GENERATED from the scanned faces' colors, with a small
+   * centered title on the left/right spines.
+   * ---------------------------------------------------------- */
+  laserdisc: {
+    id: 'laserdisc',
+    label: 'LaserDisc',
+    format: 'LaserDisc',
+    category: MEDIA_CATEGORIES.FILM,
+    caseType: 'sleeve',
+    scanNoun: 'LaserDisc Jacket',
+    dims: { w: 3.17, h: 3.17, d: 0.05 }, // 12.5" square
+    shelf: {
+      orientations: ['cover'],
+      spacing: { cover: 3.25 },
+    },
+    faces: {
+      front: { source: 'scan', label: 'Front Cover', guideNoun: 'FRONT cover', out: [2048, 2048] },
+      back:  { source: 'scan', label: 'Back Cover',  guideNoun: 'BACK cover',  out: [2048, 2048] },
+      left: {
+        source: 'generated',
+        label: 'Left Spine',
+        out: [128, 3170],
+        generated: {
+          kind: 'spineLabel',
+          colorFrom: ['front', 'back'],
+          text: { field: 'title', align: 'center', direction: 'vertical' },
+        },
+      },
+      right: {
+        source: 'generated',
+        label: 'Right Spine',
+        out: [128, 3170],
+        generated: {
+          kind: 'spineLabel',
+          colorFrom: ['front', 'back'],
+          text: { field: 'title', align: 'center', direction: 'vertical' },
+        },
+      },
+      top: {
+        source: 'generated',
+        label: 'Top Edge',
+        out: [3170, 128],
+        generated: { kind: 'solid', colorFrom: ['front', 'back'] },
+      },
+      bottom: {
+        source: 'generated',
+        label: 'Bottom Edge',
+        out: [3170, 128],
+        generated: { kind: 'solid', colorFrom: ['front', 'back'] },
+      },
+    },
+  },
 };
 
 export const DEFAULT_MODEL_ID = 'vhs';
@@ -219,6 +276,8 @@ const FORMAT_DEFAULT_MODEL = {
   'Blu-Ray': 'bluray',
   Vinyl: 'vinyl',
   'Vinyl Record': 'vinyl',
+  LaserDisc: 'laserdisc',
+  'Laser Disc': 'laserdisc',
 };
 
 /* ============================================================
