@@ -14,7 +14,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { saveItem, loadItems } from './mediaStorage';
 import { useFocusEffect, usePreventRemove } from '@react-navigation/native';
 import { getFullMovieDetails } from './tmdbService';
-import { getFullAlbumDetails } from './discogsService';
+import { getFullAlbumDetails } from './musicService';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import Media3DPreview from './Media3DPreview';
@@ -92,6 +92,11 @@ export default function ItemFormScreen({ route, navigation }) {
   // Music-specific state
   const [tracklist, setTracklist] = useState(existingItem?.tracklist || []);
   const [tracklistStyle, setTracklistStyle] = useState(existingItem?.tracklistStyle || '');
+  
+  // NEW: State to hold both API tracklists for dynamic swapping based on format
+  const [sequentialTracklist, setSequentialTracklist] = useState([]);
+  const [sidesTracklist, setSidesTracklist] = useState(null);
+  
   const [mediaFormats, setMediaFormats] = useState(existingItem?.mediaFormats || []);
   const [country, setCountry] = useState(existingItem?.country || '');
 
@@ -155,16 +160,26 @@ export default function ItemFormScreen({ route, navigation }) {
         setYear(result.year);
         setExternalId(result.id);
         setApiSource(result.source);
+        
+        // Set initial cover art (thumbnail from search)
         setCoverArtUrl(result.coverArtUrl || null);
         
         let details = null;
         if (result.source === 'TMDB') {
           details = await getFullMovieDetails(result.id);
-        } else if (result.source === 'Discogs') {
+        } else if (result.source === 'Discogs' || result.source === 'Spotify') {
           details = await getFullAlbumDetails(result.id);
         }
         
         if (details) {
+          if (details.coverArtUrl) {
+            setCoverArtUrl(details.coverArtUrl);
+          }
+          
+          if (details.title) {
+            setTitle(details.title);
+          }
+
           setReleaseDate(details.releaseDate);
           setRuntime(details.runtime);
           setDistributor(details.distributor);
@@ -177,9 +192,10 @@ export default function ItemFormScreen({ route, navigation }) {
           setDirector(details.director);
           setWriter(details.writer);
           
-          if (details.source === 'Discogs') {
-            setTracklist(details.tracklist || []);
-            setTracklistStyle(details.tracklistStyle || '');
+          if (details.source === 'Discogs' || details.source === 'Spotify') {
+            // NEW: Store both tracklists from the API
+            setSequentialTracklist(details.tracklist || []);
+            setSidesTracklist(details.sidesTracklist || null);
             setMediaFormats(details.formats || []);
             setCountry(details.country || '');
           }
@@ -190,6 +206,22 @@ export default function ItemFormScreen({ route, navigation }) {
 
     fetchData();
   }, [route.params?.searchResult, isEdit]);
+
+  // NEW: Dynamically swap the tracklist based on the selected physical format
+  useEffect(() => {
+    if (!isMusic) return;
+
+    const formatLower = (format || '').toLowerCase();
+    const isSideBased = formatLower.includes('vinyl') || formatLower.includes('cassette');
+
+    if (isSideBased && sidesTracklist && sidesTracklist.length > 0) {
+      setTracklist(sidesTracklist);
+      setTracklistStyle('sides');
+    } else if (sequentialTracklist && sequentialTracklist.length > 0) {
+      setTracklist(sequentialTracklist);
+      setTracklistStyle('sequential');
+    }
+  }, [format, sequentialTracklist, sidesTracklist, isMusic]);
 
   useFocusEffect(
     useCallback(() => {
@@ -512,7 +544,7 @@ export default function ItemFormScreen({ route, navigation }) {
         <TextInput style={styles.input} placeholder="e.g., Collector's Edition" placeholderTextColor={theme.placeholderText} value={edition} onChangeText={handleChange(setEdition)} />
 
         <Text style={styles.sectionHeader}>
-          {isMusic ? 'Discogs Details' : 'TMDB Details'}
+          {isMusic ? 'Music Details' : 'TMDB Details'}
         </Text>
         
         <Text style={styles.label}>Release Date</Text>
@@ -675,7 +707,7 @@ export default function ItemFormScreen({ route, navigation }) {
                   </View>
                   <View style={styles.optionTextContainer}>
                     <Text style={styles.optionTitle}>
-                      {apiSource === 'Discogs' ? 'Revert to Discogs Default' : 'Revert to TMDB Default'}
+                      Revert to Default Artwork
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -711,9 +743,8 @@ const getStyles = (theme) => ({
     fontWeight: '600',
   },
   sectionHeader: { fontSize: 20, fontWeight: 'bold', color: theme.accent, marginTop: 20, marginBottom: 10 },
-  // FIXED: Default to 2:3 movie poster ratio, square only for music
   posterPreview: { width: 150, height: 225, borderRadius: 8, alignSelf: 'center', marginBottom: 20, backgroundColor: theme.chipBackground },
-  posterPreviewMusic: { width: 150, height: 150 }, // Square for albums
+  posterPreviewMusic: { width: 150, height: 150 },
   label: { fontSize: 14, color: theme.textSecondary, marginBottom: 5, marginTop: 15 },
   input: { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder, borderWidth: 1, borderRadius: 8, padding: 15, fontSize: 16, color: theme.inputText },
   multiline: { height: 100, textAlignVertical: 'top' },

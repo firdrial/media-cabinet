@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, FlatList, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
 import { searchMovieByText } from './tmdbService';
-import { searchAlbumByText } from './discogsService';
+import { searchAlbumByText } from './musicService';
 import { resolveModelId, getCategory, MEDIA_CATEGORIES } from './mediaModels';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getTheme, DEFAULT_THEME_ID } from './theme';
@@ -87,10 +87,15 @@ export default function SearchScreen({ route, navigation }) {
         
         <View style={styles.resultInfo}>
           <Text style={styles.resultTitle} numberOfLines={2}>{item.title}</Text>
-          <Text style={styles.resultYear}>{item.year}</Text>
-          {isMusic && item.formatPreview ? (
-            <Text style={styles.resultFormat} numberOfLines={1}>{item.formatPreview}</Text>
+          
+          {/* Display Artist for Music, Director for Movies */}
+          {item.artist ? (
+            <Text style={styles.resultFormat} numberOfLines={1}>{item.artist}</Text>
+          ) : item.director ? (
+            <Text style={styles.resultFormat} numberOfLines={1}>{item.director}</Text>
           ) : null}
+          
+          <Text style={styles.resultYear}>{item.year}</Text>
         </View>
       </TouchableOpacity>
     );
@@ -123,7 +128,7 @@ export default function SearchScreen({ route, navigation }) {
       {isLoading ? (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={theme.accent} />
-          <Text style={styles.loadingText}>Searching {isMusic ? 'Discogs' : 'TMDB'}...</Text>
+          <Text style={styles.loadingText}>Searching {isMusic ? 'Music' : 'Movies'}...</Text>
         </View>
       ) : results.length > 0 ? (
         <FlatList
@@ -169,7 +174,7 @@ const getStyles = (theme) => ({
   resultInfo: { flex: 1 },
   resultTitle: { fontSize: 16, fontWeight: 'bold', color: theme.titleText, marginBottom: 4 },
   resultYear: { fontSize: 14, color: theme.textSecondary },
-  resultFormat: { fontSize: 12, color: theme.accent, marginTop: 2 },
+  resultFormat: { fontSize: 13, color: theme.accent, marginTop: 2, marginBottom: 2, fontWeight: '500' }, 
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   loadingText: { color: theme.textSecondary, marginTop: 10, fontSize: 16 },
   emptyText: { color: theme.textMuted, fontSize: 16, textAlign: 'center' }

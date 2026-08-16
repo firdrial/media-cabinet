@@ -1,5 +1,4 @@
-const API_KEY = '020057186e8943fec38cb00a4b111a17'; 
-// TODO: Move API_KEY to .env file for better security in a future update
+const API_KEY = process.env.EXPO_PUBLIC_TMDB_API_KEY; 
 const BASE_URL = 'https://api.themoviedb.org/3';
 
 /* ----------------------------------------------------------
@@ -14,15 +13,38 @@ export async function searchMovieByText(query) {
     const data = await response.json();
 
     if (data.results && data.results.length > 0) {
-      return data.results.map(movie => ({
-        id: movie.id,
-        source: 'TMDB', // Standardized source identifier for UI routing
-        title: movie.title,
-        year: movie.release_date ? movie.release_date.split('-')[0] : 'Unknown',
-        poster_path: movie.poster_path,
-        coverArtUrl: movie.poster_path ? `https://image.tmdb.org/t/p/w342${movie.poster_path}` : null,
-        found: true
+      // Limit to top 10 results to prevent spamming the TMDB API with credit requests
+      const topResults = data.results.slice(0, 10);
+
+      // Fetch credits concurrently to get the director for the search list
+      const detailedResults = await Promise.all(topResults.map(async (movie) => {
+        let directorName = '';
+        try {
+          const creditsUrl = `${BASE_URL}/movie/${movie.id}/credits?api_key=${API_KEY}&language=en-US`;
+          const creditsRes = await fetch(creditsUrl);
+          if (creditsRes.ok) {
+            const creditsData = await creditsRes.json();
+            const director = creditsData.crew?.find(c => c.job === 'Director');
+            directorName = director ? director.name : '';
+          }
+        } catch (err) {
+          // Fail silently for individual credit fetch so the rest of the list still loads
+          console.warn(`Failed to fetch credits for movie ${movie.id}`);
+        }
+
+        return {
+          id: movie.id,
+          source: 'TMDB',
+          title: movie.title,
+          director: directorName, // NEW: Added director for search list
+          year: movie.release_date ? movie.release_date.split('-')[0] : 'Unknown',
+          poster_path: movie.poster_path,
+          coverArtUrl: movie.poster_path ? `https://image.tmdb.org/t/p/w342${movie.poster_path}` : null,
+          found: true
+        };
       }));
+
+      return detailedResults;
     }
     return [];
   } catch (error) {

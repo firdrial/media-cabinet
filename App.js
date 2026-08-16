@@ -92,7 +92,7 @@ export default function App() {
         <Stack.Screen 
           name="Search" 
           component={SearchScreen} 
-          options={{ title: 'Search TMDB' }} 
+          options={{ title: 'Search' }} 
         />
         <Stack.Screen 
           name="ItemDetail" 

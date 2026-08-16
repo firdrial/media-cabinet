@@ -486,7 +486,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
             </Text>
             {item.director ? (
               <Text style={styles.itemDirector} numberOfLines={1}>
-                {isMusic ? 'Artist' : 'Dir'}: {item.director}
+                {isMusic ? item.director : `Dir: ${item.director}`}
               </Text>
             ) : null}
           </View>
@@ -756,7 +756,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
                 </View>
                 <View style={styles.optionTextContainer}>
                   <Text style={styles.optionTitle}>Add by Search</Text>
-                  <Text style={styles.optionSubtitle}>Search {isMusic ? 'Discogs' : 'TMDB'} by title</Text>
+                  <Text style={styles.optionSubtitle}>Search by title</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={theme.chevron} />
               </TouchableOpacity>
@@ -1244,7 +1244,7 @@ const getStyles = (theme) => ({
   },
   collectionTypes: {
     fontSize: 14,
-    color: theme.typeText,
+    color: theme.headerTypeText,
     fontWeight: '600',
     marginBottom: 8,
     textTransform: 'uppercase',
@@ -1418,8 +1418,9 @@ const getStyles = (theme) => ({
     marginBottom: 4,
   },
   itemDirector: {
-    fontSize: 12,
-    color: theme.textMuted,
+    fontSize: 13,
+    color: theme.accent,
+    fontWeight: '500',
     fontStyle: 'italic',
   },
   /* LIST VIEW */
