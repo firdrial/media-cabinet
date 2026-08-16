@@ -45,6 +45,7 @@ export const MEDIA_MODELS = {
     label: 'VHS Slipcase',
     format: 'VHS',
     caseType: 'slipcase',
+    scanNoun: 'Slipcase',
     dims: { w: 1.03, h: 1.87, d: 0.25 },
     shelf: {
       orientations: ['spine', 'cover'],
@@ -68,6 +69,7 @@ export const MEDIA_MODELS = {
     label: 'VHS Double',
     format: 'VHS',
     caseType: 'double',
+    scanNoun: 'Slipcase',
     dims: { w: 1.03, h: 1.87, d: 0.5 },
     shelf: {
       orientations: ['spine', 'cover'],
@@ -91,6 +93,7 @@ export const MEDIA_MODELS = {
     label: 'CD Jewel Case',
     format: 'CD',
     caseType: 'jewel',
+    scanNoun: 'CD Case',
     dims: { w: 1.42, h: 1.25, d: 0.1 }, // 142mm wide, 125mm tall, 10mm deep
     shelf: {
       orientations: ['spine', 'cover'],
@@ -115,6 +118,7 @@ export const MEDIA_MODELS = {
     label: 'Blu-Ray Case',
     format: 'Blu-Ray',
     caseType: 'keep',
+    scanNoun: 'Blu-ray Case',
     dims: { w: 1.35, h: 1.71, d: 0.13 },
     shelf: {
       orientations: ['spine', 'cover'],
@@ -142,6 +146,7 @@ export const MEDIA_MODELS = {
     label: 'Vinyl LP',
     format: 'Vinyl',
     caseType: 'sleeve',
+    scanNoun: 'Record Jacket',
     dims: { w: 3.14, h: 3.14, d: 0.05 },
     shelf: {
       orientations: ['cover'],
@@ -183,10 +188,6 @@ export const MEDIA_MODELS = {
         generated: { kind: 'solid', colorFrom: ['front', 'back'] },
       },
     },
-    // Vinyl is the widest/flattest format relative to a portrait screen —
-    // if it still feels too tight or too loose after the shared default,
-    // tune it here without touching any other model. Example:
-    // cameraFit: { marginFactor: 1.5 },
   },
 };
 
@@ -223,6 +224,12 @@ export function getCaseTypes(format) {
     ];
   }
   return null; // single case type for other formats
+}
+
+export function getScanLabel(modelId, isRescan) {
+  const model = getModel(modelId);
+  const noun = model.scanNoun || 'Tape';
+  return `${isRescan ? 'Rescan' : 'Scan'} ${noun}`;
 }
 
 /* ============================================================

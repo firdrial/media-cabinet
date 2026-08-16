@@ -19,7 +19,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import Tape3DPreview from './Tape3DPreview';
 import { warpQuad } from './modules/quad-detect';
-import { resolveModelId, getModel, getCaseTypes } from './mediaModels';
+import { resolveModelId, getModel, getCaseTypes, getScanLabel } from './mediaModels';
 
 export default function AddTapeScreen({ route, navigation }) {
   const isEdit = !!route.params?.tape;
@@ -514,7 +514,7 @@ export default function AddTapeScreen({ route, navigation }) {
         >
           <Ionicons name="cube-outline" size={24} color="#e07a5f" />
           <Text style={styles.scan3DButtonText}>
-            {textureMap ? 'Rescan Tape' : 'Scan Tape'}
+            {getScanLabel(modelId, !!textureMap)}
           </Text>
         </TouchableOpacity>
         
@@ -753,4 +753,4 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#ffffff'
   }
-}); 
+});
