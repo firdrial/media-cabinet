@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -94,6 +94,15 @@ export default function CollectionDetailScreen({ route, navigation }) {
 
   /*
    * ----------------------------------------------------------
+   * HIGHLIGHT & SCROLL REFS
+   * ----------------------------------------------------------
+   */
+  const flatListRef = useRef(null);
+  const [highlightedItemId, setHighlightedItemId] = useState(null);
+  const highlightTimeoutRef = useRef(null);
+
+  /*
+   * ----------------------------------------------------------
    * LOAD PREFERENCES
    * ----------------------------------------------------------
    */
@@ -177,12 +186,55 @@ export default function CollectionDetailScreen({ route, navigation }) {
 
   /*
    * ----------------------------------------------------------
+   * CLEANUP TIMEOUTS
+   * ----------------------------------------------------------
+   */
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  /*
+   * ----------------------------------------------------------
    * VIEW MODE
    * ----------------------------------------------------------
    */
   const getViewModeIcon = () => {
     const option = VIEW_MODE_OPTIONS.find(o => o.value === viewMode);
     return option ? option.icon : 'grid-outline';
+  };
+
+  /*
+   * ----------------------------------------------------------
+   * RANDOM ITEM HANDLER
+   * ----------------------------------------------------------
+   */
+  const handleRandomItem = () => {
+    if (filteredItems.length === 0) return;
+    
+    const randomIndex = Math.floor(Math.random() * filteredItems.length);
+    const randomItem = filteredItems[randomIndex];
+    
+    setHighlightedItemId(randomItem.id);
+    
+    if (flatListRef.current) {
+      flatListRef.current.scrollToIndex({ 
+        index: randomIndex, 
+        animated: true, 
+        viewPosition: 0.5 
+      });
+    }
+
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current);
+    }
+    
+    highlightTimeoutRef.current = setTimeout(() => {
+      setHighlightedItemId(null);
+    }, 3000); // Clear highlight after 3 seconds
   };
 
   /*
@@ -402,10 +454,11 @@ export default function CollectionDetailScreen({ route, navigation }) {
   const renderGridItem = ({ item }) => {
     // Support new coverArtUrl and legacy posterPath fallback
     const displayImage = item.coverPhoto || item.coverArtUrl || (item.posterPath ? `https://image.tmdb.org/t/p/w154${item.posterPath}` : null);
+    const isHighlighted = item.id === highlightedItemId;
 
     return (
       <TouchableOpacity
-        style={styles.itemCard}
+        style={[styles.itemCard, isHighlighted && styles.highlightedItem]}
         activeOpacity={0.7}
         onPress={() => navigation.navigate('ItemDetail', { item: item, returnToCollection: true })}
       >
@@ -448,24 +501,27 @@ export default function CollectionDetailScreen({ route, navigation }) {
    * LIST ITEM
    * ----------------------------------------------------------
    */
-  const renderListItem = ({ item }) => (
-    <TouchableOpacity
-      style={styles.listItemCard}
-      activeOpacity={0.7}
-      onPress={() => navigation.navigate('ItemDetail', { item: item, returnToCollection: true })}
-    >
-      <View style={styles.listItemInfo}>
-        <Text style={styles.listItemTitle} numberOfLines={1}>
-          {item.title || 'Unknown Title'}
-        </Text>
-        <Text style={styles.listItemMeta}>
-          {item.year ? `${item.year} • ` : ''}
-          {item.format || 'Unknown Format'}
-        </Text>
-      </View>
-      <Ionicons name="chevron-forward" size={20} color={theme.chevron} />
-    </TouchableOpacity>
-  );
+  const renderListItem = ({ item }) => {
+    const isHighlighted = item.id === highlightedItemId;
+    return (
+      <TouchableOpacity
+        style={[styles.listItemCard, isHighlighted && styles.highlightedItem]}
+        activeOpacity={0.7}
+        onPress={() => navigation.navigate('ItemDetail', { item: item, returnToCollection: true })}
+      >
+        <View style={styles.listItemInfo}>
+          <Text style={styles.listItemTitle} numberOfLines={1}>
+            {item.title || 'Unknown Title'}
+          </Text>
+          <Text style={styles.listItemMeta}>
+            {item.year ? `${item.year} • ` : ''}
+            {item.format || 'Unknown Format'}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color={theme.chevron} />
+      </TouchableOpacity>
+    );
+  };
 
   /*
    * ----------------------------------------------------------
@@ -497,11 +553,19 @@ export default function CollectionDetailScreen({ route, navigation }) {
 
     return (
       <FlatList
+        ref={flatListRef}
         data={filteredItems}
         renderItem={viewMode === 'grid' ? renderGridItem : renderListItem}
         keyExtractor={item => String(item.id)}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
+        extraData={highlightedItemId}
+        onScrollToIndexFailed={(info) => {
+          const wait = new Promise(resolve => setTimeout(resolve, 500));
+          wait.then(() => {
+            flatListRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.5 });
+          });
+        }}
       />
     );
   };
@@ -533,6 +597,13 @@ export default function CollectionDetailScreen({ route, navigation }) {
                   <Ionicons name="chevron-back" size={28} color={theme.textPrimary} />
                 </TouchableOpacity>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  {/* RANDOM BUTTON */}
+                  <TouchableOpacity
+                    style={styles.sortFilterButton}
+                    onPress={handleRandomItem}
+                  >
+                    <Ionicons name="shuffle-outline" size={24} color={theme.textPrimary} />
+                  </TouchableOpacity>
                   {/* VIEW MODE DROPDOWN TRIGGER */}
                   <TouchableOpacity
                     style={styles.sortFilterButton}
@@ -1375,6 +1446,17 @@ const getStyles = (theme) => ({
   listItemMeta: {
     fontSize: 13,
     color: theme.textSecondary,
+  },
+  /* HIGHLIGHTED ITEM (RANDOM SELECTION) */
+  highlightedItem: {
+    borderColor: theme.accent,
+    borderWidth: 2,
+    shadowColor: theme.accent,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 10,
+    elevation: 10,
+    transform: [{ scale: 1.02 }],
   },
   /* EMPTY */
   emptyState: {
