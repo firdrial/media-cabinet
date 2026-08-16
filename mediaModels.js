@@ -33,6 +33,18 @@ const DEFAULT_ROUGHNESS = {
 };
 
 /* ============================================================
+ * MEDIA CATEGORIES
+ * For context-aware API routing (e.g., TMDB vs Discogs vs IGDB)
+ * ============================================================ */
+
+export const MEDIA_CATEGORIES = {
+  FILM: 'FILM',
+  MUSIC: 'MUSIC',
+  GAME: 'GAME',
+  OTHER: 'OTHER',
+};
+
+/* ============================================================
  * MODEL REGISTRY
  * ============================================================ */
 
@@ -44,6 +56,7 @@ export const MEDIA_MODELS = {
     id: 'vhs',
     label: 'VHS Slipcase',
     format: 'VHS',
+    category: MEDIA_CATEGORIES.FILM,
     caseType: 'slipcase',
     scanNoun: 'Slipcase',
     dims: { w: 1.03, h: 1.87, d: 0.25 },
@@ -68,6 +81,7 @@ export const MEDIA_MODELS = {
     id: 'vhsDouble',
     label: 'VHS Double',
     format: 'VHS',
+    category: MEDIA_CATEGORIES.FILM,
     caseType: 'double',
     scanNoun: 'Slipcase',
     dims: { w: 1.03, h: 1.87, d: 0.5 },
@@ -92,8 +106,10 @@ export const MEDIA_MODELS = {
     id: 'cd',
     label: 'CD Jewel Case',
     format: 'CD',
+    category: MEDIA_CATEGORIES.MUSIC,
     caseType: 'jewel',
     scanNoun: 'CD Case',
+    tracklistStyle: 'sequential', // Standard 1, 2, 3 numbering
     dims: { w: 1.42, h: 1.25, d: 0.1 }, // 142mm wide, 125mm tall, 10mm deep
     shelf: {
       orientations: ['spine', 'cover'],
@@ -117,6 +133,7 @@ export const MEDIA_MODELS = {
     id: 'bluray',
     label: 'Blu-Ray Case',
     format: 'Blu-Ray',
+    category: MEDIA_CATEGORIES.FILM,
     caseType: 'keep',
     scanNoun: 'Blu-ray Case',
     dims: { w: 1.35, h: 1.71, d: 0.13 },
@@ -145,8 +162,10 @@ export const MEDIA_MODELS = {
     id: 'vinyl',
     label: 'Vinyl LP',
     format: 'Vinyl',
+    category: MEDIA_CATEGORIES.MUSIC,
     caseType: 'sleeve',
     scanNoun: 'Record Jacket',
+    tracklistStyle: 'sides', // A1, A2... B1, B2 numbering
     dims: { w: 3.14, h: 3.14, d: 0.05 },
     shelf: {
       orientations: ['cover'],
@@ -224,6 +243,12 @@ export function getCaseTypes(format) {
     ];
   }
   return null; // single case type for other formats
+}
+
+/* Returns the media category (FILM, MUSIC, etc.) for a given model. */
+export function getCategory(modelId) {
+  const model = getModel(modelId);
+  return model.category || MEDIA_CATEGORIES.OTHER;
 }
 
 export function getScanLabel(modelId, isRescan) {

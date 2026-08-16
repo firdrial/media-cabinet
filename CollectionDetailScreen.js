@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loadItems } from './mediaStorage';
 import ShelfView3D from './ShelfView3D';
+import { resolveModelId, getCategory, MEDIA_CATEGORIES } from './mediaModels';
 
 const { height } = Dimensions.get('window');
 
@@ -25,7 +26,7 @@ const DEFAULT_PREFERENCES = {
   sortOrder: 'desc',
   filterDecades: [],
   filterGenres: [],
-  filterDirectors: [],
+  filterDirectors: [], // Internally kept as "Directors" for legacy AsyncStorage compatibility
 };
 
 /*
@@ -80,6 +81,11 @@ export default function CollectionDetailScreen({ route, navigation }) {
    */
   const [viewMode, setViewMode] = useState('grid');
   const type = collection.type || collection.allowedTypes?.[0] || 'Unknown';
+  
+  // Determine category for dynamic UI
+  const modelId = resolveModelId(type);
+  const category = getCategory(modelId);
+  const isMusic = category === MEDIA_CATEGORIES.MUSIC;
 
   /*
    * ----------------------------------------------------------
@@ -219,15 +225,15 @@ export default function CollectionDetailScreen({ route, navigation }) {
    * FILTER TOGGLE
    * ----------------------------------------------------------
    */
-  const toggleFilter = (category, value) => {
-    const currentList = preferences[category] || [];
+  const toggleFilter = (categoryKey, value) => {
+    const currentList = preferences[categoryKey] || [];
     let newList;
     if (currentList.includes(value)) {
       newList = currentList.filter(item => item !== value);
     } else {
       newList = [...currentList, value];
     }
-    savePreferences({ ...preferences, [category]: newList });
+    savePreferences({ ...preferences, [categoryKey]: newList });
   };
 
   const hasActiveFilters =
@@ -282,7 +288,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
       });
     }
 
-    /* DIRECTOR FILTER */
+    /* DIRECTOR / ARTIST FILTER */
     if (preferences.filterDirectors?.length > 0) {
       result = result.filter(item => {
         const itemDirectors = (item.director || '')
@@ -340,7 +346,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
       chips.push({
         category: 'filterDirectors',
         value: director,
-        label: `Dir: ${director}`,
+        label: `${isMusic ? 'Art' : 'Dir'}: ${director}`,
       })
     );
 
@@ -389,10 +395,8 @@ export default function CollectionDetailScreen({ route, navigation }) {
    * ----------------------------------------------------------
    */
   const renderGridItem = ({ item }) => {
-    const posterUrl = item.posterPath
-      ? `https://image.tmdb.org/t/p/w154${item.posterPath}`
-      : null;
-    const displayImage = item.coverPhoto || posterUrl;
+    // Support new coverArtUrl and legacy posterPath fallback
+    const displayImage = item.coverPhoto || item.coverArtUrl || (item.posterPath ? `https://image.tmdb.org/t/p/w154${item.posterPath}` : null);
 
     return (
       <TouchableOpacity
@@ -404,12 +408,14 @@ export default function CollectionDetailScreen({ route, navigation }) {
           {displayImage ? (
             <Image
               source={{ uri: displayImage }}
-              style={styles.itemPoster}
+              // Apply square dimensions for music formats
+              style={[styles.itemPoster, isMusic && styles.itemPosterMusic]}
               resizeMode="cover"
             />
           ) : (
-            <View style={styles.itemPosterPlaceholder}>
-              <Ionicons name="videocam-outline" size={24} color="#666666" />
+            // Apply square dimensions for music formats
+            <View style={[styles.itemPosterPlaceholder, isMusic && styles.itemPosterMusic]}>
+              <Ionicons name={isMusic ? "musical-notes-outline" : "videocam-outline"} size={24} color="#666666" />
             </View>
           )}
           <View style={styles.itemInfo}>
@@ -422,7 +428,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
             </Text>
             {item.director ? (
               <Text style={styles.itemDirector} numberOfLines={1}>
-                Dir: {item.director}
+                {isMusic ? 'Artist' : 'Dir'}: {item.director}
               </Text>
             ) : null}
           </View>
@@ -674,7 +680,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
                 </View>
                 <View style={styles.optionTextContainer}>
                   <Text style={styles.optionTitle}>Add by Search</Text>
-                  <Text style={styles.optionSubtitle}>Search TMDB by title</Text>
+                  <Text style={styles.optionSubtitle}>Search {isMusic ? 'Discogs' : 'TMDB'} by title</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color="#666666" />
               </TouchableOpacity>
@@ -1054,13 +1060,13 @@ export default function CollectionDetailScreen({ route, navigation }) {
                   <View style={styles.dividerLine} />
                 </TouchableOpacity>
 
-                {/* DIRECTORS */}
+                {/* DIRECTORS / ARTISTS */}
                 <TouchableOpacity
                   style={styles.sectionTitleWrapper}
                   activeOpacity={1}
                   onPress={() => {}}
                 >
-                  <Text style={styles.sectionTitle}>Filter by Director</Text>
+                  <Text style={styles.sectionTitle}>Filter by {isMusic ? 'Artist' : 'Director'}</Text>
                 </TouchableOpacity>
                 {uniqueDirectors.length > 0 ? (
                   uniqueDirectors.map(director => (
@@ -1098,7 +1104,7 @@ export default function CollectionDetailScreen({ route, navigation }) {
                     onPress={() => {}}
                   >
                     <Text style={styles.emptyFilterText}>
-                      No directors available yet.
+                      No {isMusic ? 'artists' : 'directors'} available yet.
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -1306,6 +1312,10 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     marginRight: 12,
     backgroundColor: '#2a2a2a',
+  },
+  itemPosterMusic: {
+    width: 60,
+    height: 60, // Square aspect ratio for albums
   },
   itemPosterPlaceholder: {
     width: 50,

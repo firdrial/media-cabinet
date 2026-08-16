@@ -14,12 +14,20 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { saveItem, loadItems } from './mediaStorage';
 import { useFocusEffect, usePreventRemove } from '@react-navigation/native';
-import { searchMovieByBarcode, getFullMovieDetails } from './apiService';
+import { getFullMovieDetails } from './tmdbService';
+import { getFullAlbumDetails } from './discogsService';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import Media3DPreview from './Media3DPreview';
 import { warpQuad } from './modules/quad-detect';
-import { resolveModelId, getModel, getCaseTypes, getScanLabel } from './mediaModels';
+import { 
+  resolveModelId, 
+  getModel, 
+  getCaseTypes, 
+  getScanLabel, 
+  getCategory, 
+  MEDIA_CATEGORIES 
+} from './mediaModels';
 
 export default function ItemFormScreen({ route, navigation }) {
   const isEdit = !!route.params?.item;
@@ -34,9 +42,16 @@ export default function ItemFormScreen({ route, navigation }) {
   const [format, setFormat] = useState(existingItem?.format || (allowedFormats ? allowedFormats[0] : 'VHS'));
   const [caseType, setCaseType] = useState(existingItem?.caseType || 'slipcase');
   const [notes, setNotes] = useState(existingItem?.notes || '');
-  const [barcode, setBarcode] = useState(existingItem?.barcode || '');
-  const [tmdbId, setTmdbId] = useState(existingItem?.tmdbId || '');
-  const [posterPath, setPosterPath] = useState(existingItem?.posterPath || '');
+  
+  // Standardized API fields (replaces tmdbId/posterPath)
+  const [externalId, setExternalId] = useState(existingItem?.externalId || existingItem?.tmdbId || '');
+  const [apiSource, setApiSource] = useState(existingItem?.apiSource || '');
+  const [coverArtUrl, setCoverArtUrl] = useState(() => {
+    if (existingItem?.coverArtUrl) return existingItem.coverArtUrl;
+    if (existingItem?.posterPath) return `https://image.tmdb.org/t/p/w342${existingItem.posterPath}`;
+    return null;
+  });
+
   const [coverPhoto, setCoverPhoto] = useState(existingItem?.coverPhoto || null);
   const [textureMap, setTextureMap] = useState(existingItem?.textureMap || null);
   const [showCoverOptions, setShowCoverOptions] = useState(false);
@@ -54,7 +69,14 @@ export default function ItemFormScreen({ route, navigation }) {
   const [director, setDirector] = useState(existingItem?.director || '');
   const [writer, setWriter] = useState(existingItem?.writer || '');
 
+  // Music-specific state
+  const [tracklist, setTracklist] = useState(existingItem?.tracklist || []);
+  const [tracklistStyle, setTracklistStyle] = useState(existingItem?.tracklistStyle || '');
+  const [mediaFormats, setMediaFormats] = useState(existingItem?.mediaFormats || []);
+  const [country, setCountry] = useState(existingItem?.country || '');
+
   const modelId = resolveModelId(format, caseType);
+  const category = getCategory(modelId);
 
   // Track unsaved changes
   const [isDirty, setIsDirty] = useState(false);
@@ -80,7 +102,6 @@ export default function ItemFormScreen({ route, navigation }) {
 
   // Prevent user from leaving if there are unsaved changes
   usePreventRemove(isDirty, ({ data }) => {
-    // If we are actively saving, bypass the warning and let the navigation proceed
     if (isSavingRef.current) {
       navigation.dispatch(data.action);
       return;
@@ -107,49 +128,21 @@ export default function ItemFormScreen({ route, navigation }) {
     const fetchData = async () => {
       if (isEdit) return;
 
-      if (route.params?.barcode) {
-        setBarcode(route.params.barcode);
-        setTitle('Searching database...');
-        try {
-          const movieData = await searchMovieByBarcode(route.params.barcode);
-          if (movieData && movieData.found) {
-            setTitle(movieData.title);
-            setYear(movieData.year);
-            setTmdbId(movieData.id);
-            setPosterPath(movieData.poster_path);
-            
-            const details = await getFullMovieDetails(movieData.id);
-            if (details) {
-              setReleaseDate(details.releaseDate);
-              setRuntime(details.runtime);
-              setDistributor(details.distributor);
-              setTagline(details.tagline);
-              setOverview(details.overview);
-              setGenres(details.genres.join(', '));
-              setBudget(details.budget);
-              setRevenue(details.revenue);
-              setProductionCompanies(details.productionCompanies.join(', '));
-              setDirector(details.director);
-              setWriter(details.writer);
-            }
-            setIsDirty(prev => prev ? prev : true);
-          } else {
-            setTitle('');
-            Alert.alert('Not Found', 'No movie found for this barcode. You can enter the details manually.');
-          }
-        } catch (error) {
-          console.error('CRASH IN USE EFFECT:', error);
-          Alert.alert('Error', 'The app crashed while searching.');
-        }
-      } 
-      else if (route.params?.searchResult) {
-        const movie = route.params.searchResult;
-        setTitle(movie.title);
-        setYear(movie.year);
-        setTmdbId(movie.id);
-        setPosterPath(movie.poster_path);
+      if (route.params?.searchResult) {
+        const result = route.params.searchResult;
+        setTitle(result.title);
+        setYear(result.year);
+        setExternalId(result.id);
+        setApiSource(result.source);
+        setCoverArtUrl(result.coverArtUrl || null);
         
-        const details = await getFullMovieDetails(movie.id);
+        let details = null;
+        if (result.source === 'TMDB') {
+          details = await getFullMovieDetails(result.id);
+        } else if (result.source === 'Discogs') {
+          details = await getFullAlbumDetails(result.id);
+        }
+        
         if (details) {
           setReleaseDate(details.releaseDate);
           setRuntime(details.runtime);
@@ -157,18 +150,25 @@ export default function ItemFormScreen({ route, navigation }) {
           setTagline(details.tagline);
           setOverview(details.overview);
           setGenres(details.genres.join(', '));
-          setBudget(details.budget);
-          setRevenue(details.revenue);
+          setBudget(details.budget || '');
+          setRevenue(details.revenue || '');
           setProductionCompanies(details.productionCompanies.join(', '));
           setDirector(details.director);
           setWriter(details.writer);
+          
+          if (details.source === 'Discogs') {
+            setTracklist(details.tracklist || []);
+            setTracklistStyle(details.tracklistStyle || '');
+            setMediaFormats(details.formats || []);
+            setCountry(details.country || '');
+          }
         }
         setIsDirty(prev => prev ? prev : true);
       } 
     };
 
     fetchData();
-  }, [route.params?.barcode, route.params?.searchResult, isEdit]);
+  }, [route.params?.searchResult, isEdit]);
 
   useFocusEffect(
     useCallback(() => {
@@ -237,7 +237,6 @@ export default function ItemFormScreen({ route, navigation }) {
         const model = getModel(activeModelId);
         const [outW, outH] = model.faces.front.out;
 
-        // Extract and rectify the front cover using the native warp module
         const result = await warpQuad(textureMap.front.uri, textureMap.front.corners, outW, outH, false);
         if (result && result.uri) {
           setCoverPhoto(result.uri);
@@ -267,10 +266,11 @@ export default function ItemFormScreen({ route, navigation }) {
       format,
       caseType,
       modelId,
+      category,
       notes,
-      barcode,
-      tmdbId,
-      posterPath,
+      externalId,
+      apiSource,
+      coverArtUrl,
       coverPhoto,
       textureMap,
       releaseDate,
@@ -285,30 +285,32 @@ export default function ItemFormScreen({ route, navigation }) {
       productionCompanies: productionCompanies.split(',').map(p => p.trim()).filter(p => p),
       director,
       writer,
+      tracklist,
+      tracklistStyle: tracklistStyle || getModel(modelId).tracklistStyle,
+      mediaFormats,
+      country,
       dateAdded: existingItem?.dateAdded || new Date().toISOString(), 
     };
 
     try {
       await saveItem(itemData);
       
-      // Mark as saving to bypass the usePreventRemove alert
       isSavingRef.current = true;
-      setIsDirty(false); // Clear dirty state to allow navigation away
+      setIsDirty(false); 
       
       Alert.alert('Success!', `"${title}" has been saved!`);
-      
       navigation.replace('ItemDetail', { item: itemData, returnToCollection });
       
     } catch (error) {
-      isSavingRef.current = false; // Reset on failure
+      isSavingRef.current = false;
       console.error('Save error:', error);
       Alert.alert('Error', 'Failed to save the item.');
     }
   };
 
   const handleSave = async () => {
-    if (!title || title === 'Searching database...') {
-      Alert.alert('Oops', 'Please wait for the search to finish or enter a title!');
+    if (!title) {
+      Alert.alert('Oops', 'Please enter a title!');
       return;
     }
 
@@ -317,16 +319,13 @@ export default function ItemFormScreen({ route, navigation }) {
       const targetCollectionId = collectionId || existingItem?.collectionId || null;
       
       const duplicate = allItems.find(item => {
-        // Skip the current item if we are editing
         if (isEdit && item.id === existingItem.id) return false;
         
-        // Must be in the same collection
         const itemCollectionId = item.collectionId || null;
         if (targetCollectionId !== itemCollectionId) return false;
         
-        // Check identifiers
-        if (tmdbId && item.tmdbId && String(item.tmdbId) === String(tmdbId)) return true;
-        if (barcode && item.barcode && item.barcode === barcode) return true;
+        if (externalId && item.externalId && String(item.externalId) === String(externalId)) return true;
+        if (externalId && item.tmdbId && String(item.tmdbId) === String(externalId)) return true; // Legacy check
         if (title && year && item.title === title && String(item.year) === String(year)) return true;
         if (title && !year && item.title === title) return true;
         
@@ -351,7 +350,66 @@ export default function ItemFormScreen({ route, navigation }) {
     performSave();
   };
 
+  const renderTracklist = () => {
+    if (!isMusic || tracklist.length === 0) return null;
+
+    const currentStyle = tracklistStyle || getModel(modelId).tracklistStyle || 'sequential';
+
+    if (currentStyle === 'sides') {
+      let currentSide = null;
+      const groupedTracks = [];
+
+      tracklist.forEach((track, index) => {
+        // Extract the side letter (e.g., 'A' from 'A1', 'B' from 'B1')
+        const side = track.position ? track.position.match(/[A-Z]/i)?.[0] : null;
+        
+        if (side && side !== currentSide) {
+          currentSide = side;
+          groupedTracks.push(
+            <Text key={`side-${side}-${index}`} style={styles.sideHeader}>
+              Side {side.toUpperCase()}
+            </Text>
+          );
+        }
+        
+        groupedTracks.push(
+          <View key={index} style={styles.trackRow}>
+            <Text style={styles.trackPosition}>{track.position || `${index + 1}`}</Text>
+            <Text style={styles.trackTitle}>{track.title}</Text>
+            <Text style={styles.trackDuration}>{track.duration || ''}</Text>
+          </View>
+        );
+      });
+
+      return (
+        <>
+          <Text style={styles.label}>Tracklist</Text>
+          <View style={styles.tracklistContainer}>
+            {groupedTracks}
+          </View>
+        </>
+      );
+    }
+
+    // Sequential (CDs, etc)
+    return (
+      <>
+        <Text style={styles.label}>Tracklist</Text>
+        <View style={styles.tracklistContainer}>
+          {tracklist.map((track, index) => (
+            <View key={index} style={styles.trackRow}>
+              <Text style={styles.trackPosition}>{track.position || `${index + 1}`}</Text>
+              <Text style={styles.trackTitle}>{track.title}</Text>
+              <Text style={styles.trackDuration}>{track.duration || ''}</Text>
+            </View>
+          ))}
+        </View>
+      </>
+    );
+  };
+
   const currentCaseTypes = getCaseTypes(format);
+  const isMusic = category === MEDIA_CATEGORIES.MUSIC;
 
   return (
     <>
@@ -373,9 +431,9 @@ export default function ItemFormScreen({ route, navigation }) {
           </View>
         )}
 
-        {posterPath ? (
+        {coverArtUrl ? (
           <Image 
-            source={{ uri: `https://image.tmdb.org/t/p/w342${posterPath}` }} 
+            source={{ uri: coverArtUrl }} 
             style={styles.posterPreview} 
             resizeMode="cover"
           />
@@ -433,41 +491,48 @@ export default function ItemFormScreen({ route, navigation }) {
         <Text style={styles.label}>Edition</Text>
         <TextInput style={styles.input} placeholder="e.g., Collector's Edition" value={edition} onChangeText={handleChange(setEdition)} />
 
-        <Text style={styles.sectionHeader}>TMDB Details</Text>
+        <Text style={styles.sectionHeader}>
+          {isMusic ? 'Discogs Details' : 'TMDB Details'}
+        </Text>
+        
         <Text style={styles.label}>Release Date</Text>
         <TextInput style={styles.input} placeholder="e.g., 1999-10-15" value={releaseDate} onChangeText={handleChange(setReleaseDate)} />
 
         <Text style={styles.label}>Runtime</Text>
-        <TextInput style={styles.input} placeholder="e.g., 136 min" value={runtime} onChangeText={handleChange(setRuntime)} />
+        <TextInput style={styles.input} placeholder={isMusic ? "e.g., 45:30" : "e.g., 136 min"} value={runtime} onChangeText={handleChange(setRuntime)} />
 
-        <Text style={styles.label}>Distributor</Text>
-        <TextInput style={styles.input} placeholder="e.g., Warner Bros." value={distributor} onChangeText={handleChange(setDistributor)} />
+        <Text style={styles.label}>{isMusic ? 'Record Label(s)' : 'Distributor'}</Text>
+        <TextInput style={styles.input} placeholder={isMusic ? "e.g., RCA, Sub Pop" : "e.g., Warner Bros."} value={distributor} onChangeText={handleChange(setDistributor)} />
 
-        <Text style={styles.label}>Tagline</Text>
-        <TextInput style={styles.input} placeholder="e.g., Welcome to the Real World" value={tagline} onChangeText={handleChange(setTagline)} />
+        <Text style={styles.label}>{isMusic ? 'Catalog #' : 'Tagline'}</Text>
+        <TextInput style={styles.input} placeholder={isMusic ? "e.g., PB 41447" : "e.g., Welcome to the Real World"} value={tagline} onChangeText={handleChange(setTagline)} />
 
         <Text style={styles.label}>Genres (comma separated)</Text>
-        <TextInput style={styles.input} placeholder="e.g., Action, Sci-Fi" value={genres} onChangeText={handleChange(setGenres)} />
+        <TextInput style={styles.input} placeholder={isMusic ? "e.g., Rock, Grunge, Synth-pop" : "e.g., Action, Sci-Fi"} value={genres} onChangeText={handleChange(setGenres)} />
 
-        <Text style={styles.label}>Director</Text>
-        <TextInput style={styles.input} placeholder="e.g., The Wachowskis" value={director} onChangeText={handleChange(setDirector)} />
+        <Text style={styles.label}>{isMusic ? 'Artist(s)' : 'Director'}</Text>
+        <TextInput style={styles.input} placeholder={isMusic ? "e.g., Nirvana" : "e.g., The Wachowskis"} value={director} onChangeText={handleChange(setDirector)} />
 
-        <Text style={styles.label}>Writer</Text>
-        <TextInput style={styles.input} placeholder="e.g., The Wachowskis" value={writer} onChangeText={handleChange(setWriter)} />
+        <Text style={styles.label}>{isMusic ? 'Producer(s) / Writer(s)' : 'Writer'}</Text>
+        <TextInput style={styles.input} placeholder={isMusic ? "e.g., Butch Vig" : "e.g., The Wachowskis"} value={writer} onChangeText={handleChange(setWriter)} />
 
-        <Text style={styles.label}>Budget</Text>
-        <TextInput style={styles.input} placeholder="e.g., $63,000,000" value={budget} onChangeText={handleChange(setBudget)} />
+        {!isMusic && (
+          <>
+            <Text style={styles.label}>Budget</Text>
+            <TextInput style={styles.input} placeholder="e.g., $63,000,000" value={budget} onChangeText={handleChange(setBudget)} />
 
-        <Text style={styles.label}>Revenue</Text>
-        <TextInput style={styles.input} placeholder="e.g., $463,500,000" value={revenue} onChangeText={handleChange(setRevenue)} />
+            <Text style={styles.label}>Revenue</Text>
+            <TextInput style={styles.input} placeholder="e.g., $463,500,000" value={revenue} onChangeText={handleChange(setRevenue)} />
+          </>
+        )}
 
-        <Text style={styles.label}>Production Companies (comma separated)</Text>
+        <Text style={styles.label}>{isMusic ? 'Label(s) / Production' : 'Production Companies (comma separated)'}</Text>
         <TextInput style={styles.input} placeholder="e.g., Warner Bros., Village Roadshow" value={productionCompanies} onChangeText={handleChange(setProductionCompanies)} />
 
-        <Text style={styles.label}>Plot Overview</Text>
+        <Text style={styles.label}>{isMusic ? 'Release Notes' : 'Plot Overview'}</Text>
         <TextInput 
           style={[styles.input, styles.multiline]} 
-          placeholder="Enter plot summary..." 
+          placeholder={isMusic ? "Notes on pressing, matrix runout, etc..." : "Enter plot summary..."} 
           multiline 
           numberOfLines={4}
           value={overview} 
@@ -483,14 +548,20 @@ export default function ItemFormScreen({ route, navigation }) {
           onChangeText={handleChange(setNotes)} 
         />
 
-        {barcode ? (
-          <View style={styles.barcodeContainer}>
-            <Text style={styles.label}>Scanned Barcode</Text>
-            <View style={styles.barcodeBox}>
-              <Text style={styles.barcodeText}>{barcode}</Text>
+        {isMusic && mediaFormats.length > 0 && (
+          <>
+            <Text style={styles.label}>Format(s)</Text>
+            <View style={styles.formatChipsContainer}>
+              {mediaFormats.map((fmt, index) => (
+                <View key={index} style={styles.formatChip}>
+                  <Text style={styles.formatChipText}>{fmt}</Text>
+                </View>
+              ))}
             </View>
-          </View>
-        ) : null}
+          </>
+        )}
+
+        {renderTracklist()}
 
         <Text style={styles.label}>Cover Photo</Text>
         <TouchableOpacity 
@@ -575,13 +646,15 @@ export default function ItemFormScreen({ route, navigation }) {
                 </TouchableOpacity>
               )}
 
-              {coverPhoto && (
+              {coverPhoto && coverArtUrl && (
                 <TouchableOpacity style={styles.sheetOption} onPress={handleClearCover}>
                   <View style={[styles.optionIcon, { backgroundColor: 'rgba(229, 9, 20, 0.15)' }]}>
                     <Ionicons name="trash-outline" size={24} color="#e50914" />
                   </View>
                   <View style={styles.optionTextContainer}>
-                    <Text style={styles.optionTitle}>Revert to TMDB Default</Text>
+                    <Text style={styles.optionTitle}>
+                      {apiSource === 'Discogs' ? 'Revert to Discogs Default' : 'Revert to TMDB Default'}
+                    </Text>
                   </View>
                 </TouchableOpacity>
               )}
@@ -616,15 +689,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   sectionHeader: { fontSize: 20, fontWeight: 'bold', color: '#e50914', marginTop: 20, marginBottom: 10 },
-  posterPreview: { width: 150, height: 225, borderRadius: 8, alignSelf: 'center', marginBottom: 20, backgroundColor: '#333333' },
+  posterPreview: { width: 150, height: 150, borderRadius: 8, alignSelf: 'center', marginBottom: 20, backgroundColor: '#333333' },
   label: { fontSize: 14, color: '#aaaaaa', marginBottom: 5, marginTop: 15 },
   input: { backgroundColor: '#1e1e1e', borderColor: '#333333', borderWidth: 1, borderRadius: 8, padding: 15, fontSize: 16, color: '#ffffff' },
   multiline: { height: 100, textAlignVertical: 'top' },
   button: { backgroundColor: '#e50914', padding: 18, borderRadius: 8, marginTop: 30, alignItems: 'center' },
   buttonText: { color: '#ffffff', fontSize: 18, fontWeight: 'bold' },
-  barcodeContainer: { marginTop: 20 },
-  barcodeBox: { backgroundColor: '#2a2a2a', padding: 15, borderRadius: 8, borderLeftWidth: 4, borderLeftColor: '#e50914' },
-  barcodeText: { color: '#ffffff', fontSize: 16, fontFamily: 'monospace' },
   photoUploader: {
     width: '100%',
     height: 200,
@@ -666,6 +736,43 @@ const styles = StyleSheet.create({
   },
   formatChipTextActive: {
     color: '#e50914',
+  },
+  tracklistContainer: {
+    backgroundColor: '#1e1e1e',
+    borderRadius: 8,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#333333',
+  },
+  sideHeader: {
+    color: '#e07a5f',
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginTop: 10,
+    marginBottom: 5,
+    textTransform: 'uppercase',
+  },
+  trackRow: {
+    flexDirection: 'row',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2a2a2a',
+    alignItems: 'center',
+  },
+  trackPosition: {
+    width: 40,
+    color: '#888888',
+    fontSize: 14,
+  },
+  trackTitle: {
+    flex: 1,
+    color: '#ffffff',
+    fontSize: 14,
+  },
+  trackDuration: {
+    color: '#888888',
+    fontSize: 14,
+    marginLeft: 10,
   },
   scan3DButton: {
     flexDirection: 'row',

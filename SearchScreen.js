@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, FlatList, StyleSheet, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
-import { searchMovieByText } from './apiService';
+import { searchMovieByText } from './tmdbService';
+import { searchAlbumByText } from './discogsService';
+import { resolveModelId, getCategory, MEDIA_CATEGORIES } from './mediaModels';
 
 export default function SearchScreen({ route, navigation }) {
   const [query, setQuery] = useState('');
@@ -9,22 +11,36 @@ export default function SearchScreen({ route, navigation }) {
   
   const collectionId = route.params?.collectionId || null;
   const returnToCollection = route.params?.returnToCollection || false;
+  
   // Default to empty array to safely extract the single format
   const allowedFormats = route.params?.allowedFormats || [];
   const displayFormat = allowedFormats.length > 0 ? allowedFormats[0] : 'Unknown';
+  
+  // Determine the media category to route the search to the correct API
+  const primaryFormat = allowedFormats.length > 0 ? allowedFormats[0] : 'VHS';
+  const modelId = resolveModelId(primaryFormat);
+  const category = getCategory(modelId);
+  const isMusic = category === MEDIA_CATEGORIES.MUSIC;
 
   const handleSearch = async () => {
     if (!query.trim()) return;
     
     setIsLoading(true);
-    const searchResults = await searchMovieByText(query);
+    
+    let searchResults = [];
+    if (isMusic) {
+      searchResults = await searchAlbumByText(query);
+    } else {
+      searchResults = await searchMovieByText(query);
+    }
+    
     setResults(searchResults);
     setIsLoading(false);
   };
 
-  const handleSelectMovie = (movie) => {
+  const handleSelectItem = (item) => {
     navigation.navigate('AddItem', { 
-      searchResult: movie,
+      searchResult: item,
       collectionId,
       allowedFormats, // Preserved as an array to prevent breaking ItemFormScreen
       returnToCollection,
@@ -32,25 +48,29 @@ export default function SearchScreen({ route, navigation }) {
   };
 
   const renderResult = ({ item }) => {
-    const posterUrl = item.poster_path 
-      ? `https://image.tmdb.org/t/p/w154${item.poster_path}` 
-      : null;
+    // Use the standardized coverArtUrl provided by both services
+    const posterUrl = item.coverArtUrl;
 
     return (
-      <TouchableOpacity style={styles.resultCard} onPress={() => handleSelectMovie(item)}>
+      <TouchableOpacity style={styles.resultCard} onPress={() => handleSelectItem(item)}>
         {posterUrl ? (
           <Image 
             source={{ uri: posterUrl }} 
-            style={styles.resultPoster} 
+            // Apply square dimensions for music formats
+            style={[styles.resultPoster, isMusic && styles.resultPosterMusic]} 
             resizeMode="cover"
           />
         ) : (
-          <View style={styles.resultPosterPlaceholder} />
+          // Apply square dimensions for music formats
+          <View style={[styles.resultPosterPlaceholder, isMusic && styles.resultPosterMusic]} />
         )}
         
         <View style={styles.resultInfo}>
-          <Text style={styles.resultTitle}>{item.title}</Text>
+          <Text style={styles.resultTitle} numberOfLines={2}>{item.title}</Text>
           <Text style={styles.resultYear}>{item.year}</Text>
+          {isMusic && item.formatPreview ? (
+            <Text style={styles.resultFormat} numberOfLines={1}>{item.formatPreview}</Text>
+          ) : null}
         </View>
       </TouchableOpacity>
     );
@@ -69,7 +89,7 @@ export default function SearchScreen({ route, navigation }) {
       <View style={styles.searchBar}>
         <TextInput
           style={styles.input}
-          placeholder="Search by title..."
+          placeholder={isMusic ? "Search by album or artist..." : "Search by title..."}
           placeholderTextColor="#888888"
           value={query}
           onChangeText={setQuery}
@@ -83,19 +103,19 @@ export default function SearchScreen({ route, navigation }) {
       {isLoading ? (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color="#e50914" />
-          <Text style={styles.loadingText}>Searching TMDB...</Text>
+          <Text style={styles.loadingText}>Searching {isMusic ? 'Discogs' : 'TMDB'}...</Text>
         </View>
       ) : results.length > 0 ? (
         <FlatList
           data={results}
           renderItem={renderResult}
-          keyExtractor={(item) => item.id.toString()}
+          keyExtractor={(item, index) => item.id ? item.id.toString() : index.toString()}
           contentContainerStyle={styles.list}
         />
       ) : (
         <View style={styles.centered}>
           <Text style={styles.emptyText}>
-            {query.length > 0 ? 'No results found. Try a different title.' : 'Type a movie title above to search.'}
+            {query.length > 0 ? 'No results found. Try a different title.' : `Type a ${isMusic ? 'music' : 'movie'} title above to search.`}
           </Text>
         </View>
       )}
@@ -124,10 +144,12 @@ const styles = StyleSheet.create({
   list: { padding: 15 },
   resultCard: { backgroundColor: '#1e1e1e', padding: 12, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: '#333333', flexDirection: 'row', alignItems: 'center' },
   resultPoster: { width: 50, height: 75, borderRadius: 6, marginRight: 12, backgroundColor: '#333333' },
+  resultPosterMusic: { width: 60, height: 60 }, // Square aspect ratio for albums
   resultPosterPlaceholder: { width: 50, height: 75, borderRadius: 6, marginRight: 12, backgroundColor: '#2a2a2a' },
   resultInfo: { flex: 1 },
   resultTitle: { fontSize: 16, fontWeight: 'bold', color: '#ffffff', marginBottom: 4 },
   resultYear: { fontSize: 14, color: '#aaaaaa' },
+  resultFormat: { fontSize: 12, color: '#e07a5f', marginTop: 2 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   loadingText: { color: '#aaaaaa', marginTop: 10, fontSize: 16 },
   emptyText: { color: '#888888', fontSize: 16, textAlign: 'center' }

@@ -1,31 +1,11 @@
 const API_KEY = '020057186e8943fec38cb00a4b111a17'; 
+// TODO: Move API_KEY to .env file for better security in a future update
 const BASE_URL = 'https://api.themoviedb.org/3';
 
-export async function searchMovieByBarcode(barcode) {
-  try {
-    const url = `${BASE_URL}/find/${barcode}?api_key=${API_KEY}&external_source=upc&language=en-US`;
-    const response = await fetch(url);
-
-    if (!response.ok) return null;
-
-    const data = await response.json();
-
-    if (data.movie_results && data.movie_results.length > 0) {
-      const movie = data.movie_results[0];
-      return {
-        id: movie.id,
-        title: movie.title,
-        year: movie.release_date ? movie.release_date.split('-')[0] : 'Unknown',
-        poster_path: movie.poster_path,
-        found: true
-      };
-    }
-    return null;
-  } catch (error) {
-    console.error('Barcode Search Error:', error);
-    return null;
-  }
-}
+/* ----------------------------------------------------------
+ * BARCODE SEARCH REMOVED
+ * The physical barcode scanning feature has been deprecated.
+ * ---------------------------------------------------------- */
 
 export async function searchMovieByText(query) {
   try {
@@ -36,9 +16,11 @@ export async function searchMovieByText(query) {
     if (data.results && data.results.length > 0) {
       return data.results.map(movie => ({
         id: movie.id,
+        source: 'TMDB', // Standardized source identifier for UI routing
         title: movie.title,
         year: movie.release_date ? movie.release_date.split('-')[0] : 'Unknown',
         poster_path: movie.poster_path,
+        coverArtUrl: movie.poster_path ? `https://image.tmdb.org/t/p/w342${movie.poster_path}` : null,
         found: true
       }));
     }
@@ -49,7 +31,7 @@ export async function searchMovieByText(query) {
   }
 }
 
-// NEW: Fetch comprehensive movie details including credits, genres, and financials
+// Fetch comprehensive movie details including credits, genres, and financials
 export async function getFullMovieDetails(movieId) {
   try {
     const url = `${BASE_URL}/movie/${movieId}?api_key=${API_KEY}&language=en-US&append_to_response=credits`;
@@ -75,6 +57,7 @@ export async function getFullMovieDetails(movieId) {
     };
 
     return {
+      source: 'TMDB', // Standardized source identifier
       overview: data.overview || 'No overview available.',
       tagline: data.tagline || '',
       genres: data.genres?.map(g => g.name) || [],

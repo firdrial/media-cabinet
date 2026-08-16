@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { deleteItem, saveItem } from './mediaStorage';
 import { useFocusEffect } from '@react-navigation/native';
 import Media3DPreview from './Media3DPreview';
-import { resolveModelId } from './mediaModels';
+import { resolveModelId, getCategory, MEDIA_CATEGORIES } from './mediaModels';
 
 export default function ItemDetailScreen({ route, navigation }) {
   const { item } = route.params;
@@ -15,6 +15,10 @@ export default function ItemDetailScreen({ route, navigation }) {
   // Determine the active 3D model ID. Falls back to resolving from format/caseType
   // for legacy items that were saved before the mediaModels registry existed.
   const activeModelId = currentItem.modelId || currentItem.textureMap?.modelId || resolveModelId(currentItem.format, currentItem.caseType);
+  
+  // Determine category for dynamic UI
+  const category = getCategory(activeModelId);
+  const isMusic = category === MEDIA_CATEGORIES.MUSIC;
 
   useFocusEffect(
     useCallback(() => {
@@ -84,15 +88,73 @@ export default function ItemDetailScreen({ route, navigation }) {
       .find(stackRoute => stackRoute.name === 'CollectionDetail');
 
     if (returnToCollection && collectionRoute && navigation.popTo) {
-      // popTo replaces params by default. Preserve the collection object the
-      // screen needs rather than returning to it with undefined route.params.
       navigation.popTo('CollectionDetail', collectionRoute.params);
       return;
     }
     navigation.goBack();
   };
 
-  const displayImage = currentItem.coverPhoto || (currentItem.posterPath ? `https://image.tmdb.org/t/p/w500${currentItem.posterPath}` : null);
+  const renderTracklist = () => {
+    if (!isMusic || !currentItem.tracklist || currentItem.tracklist.length === 0) return null;
+
+    const currentStyle = currentItem.tracklistStyle || 'sequential';
+
+    if (currentStyle === 'sides') {
+      let currentSide = null;
+      const groupedTracks = [];
+
+      currentItem.tracklist.forEach((track, index) => {
+        const side = track.position ? track.position.match(/[A-Z]/i)?.[0] : null;
+        
+        if (side && side !== currentSide) {
+          currentSide = side;
+          groupedTracks.push(
+            <Text key={`side-${side}-${index}`} style={styles.sideHeader}>
+              Side {side.toUpperCase()}
+            </Text>
+          );
+        }
+        
+        groupedTracks.push(
+          <View key={index} style={styles.trackRow}>
+            <Text style={styles.trackPosition}>{track.position || `${index + 1}`}</Text>
+            <Text style={styles.trackTitle}>{track.title}</Text>
+            <Text style={styles.trackDuration}>{track.duration || ''}</Text>
+          </View>
+        );
+      });
+
+      return (
+        <>
+          <Text style={styles.sectionLabel}>Tracklist</Text>
+          <View style={styles.tracklistContainer}>
+            {groupedTracks}
+          </View>
+          <View style={styles.divider} />
+        </>
+      );
+    }
+
+    // Sequential (CDs, etc)
+    return (
+      <>
+        <Text style={styles.sectionLabel}>Tracklist</Text>
+        <View style={styles.tracklistContainer}>
+          {currentItem.tracklist.map((track, index) => (
+            <View key={index} style={styles.trackRow}>
+              <Text style={styles.trackPosition}>{track.position || `${index + 1}`}</Text>
+              <Text style={styles.trackTitle}>{track.title}</Text>
+              <Text style={styles.trackDuration}>{track.duration || ''}</Text>
+            </View>
+          ))}
+        </View>
+        <View style={styles.divider} />
+      </>
+    );
+  };
+
+  // Support new coverArtUrl and legacy posterPath fallback
+  const displayImage = currentItem.coverPhoto || currentItem.coverArtUrl || (currentItem.posterPath ? `https://image.tmdb.org/t/p/w500${currentItem.posterPath}` : null);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
@@ -120,10 +182,14 @@ export default function ItemDetailScreen({ route, navigation }) {
         ) : (
           <>
             {displayImage ? (
-              <Image source={{ uri: displayImage }} style={styles.coverImage} resizeMode="cover" />
+              <Image 
+                source={{ uri: displayImage }} 
+                style={[styles.coverImage, isMusic && styles.coverImageMusic]} 
+                resizeMode="cover" 
+              />
             ) : (
-              <View style={styles.coverPlaceholder}>
-                <Ionicons name="videocam-outline" size={64} color="#666666" />
+              <View style={[styles.coverPlaceholder, isMusic && styles.coverPlaceholderMusic]}>
+                <Ionicons name={isMusic ? "musical-notes-outline" : "videocam-outline"} size={64} color="#666666" />
               </View>
             )}
             {/* Fallback button when no 3D scan exists yet */}
@@ -142,7 +208,9 @@ export default function ItemDetailScreen({ route, navigation }) {
           <Text style={styles.subTitle}>{currentItem.year} • {currentItem.format} • {currentItem.runtime || 'Unknown'}</Text>
           
           {currentItem.tagline ? (
-            <Text style={styles.tagline}>"{currentItem.tagline}"</Text>
+            <Text style={styles.tagline}>
+              {isMusic ? `Cat# ${currentItem.tagline}` : `"${currentItem.tagline}"`}
+            </Text>
           ) : null}
 
           {currentItem.genres && currentItem.genres.length > 0 ? (
@@ -166,10 +234,10 @@ export default function ItemDetailScreen({ route, navigation }) {
           ) : null}
 
           <View style={styles.crewGrid}>
-            <DetailItem icon="person-outline" label="Director" value={currentItem.director || 'Unknown'} />
-            <DetailItem icon="create-outline" label="Writer" value={currentItem.writer || 'Unknown'} />
+            <DetailItem icon={isMusic ? "mic-outline" : "person-outline"} label={isMusic ? "Artist" : "Director"} value={currentItem.director || 'Unknown'} />
+            <DetailItem icon="create-outline" label={isMusic ? "Producer / Writer" : "Writer"} value={currentItem.writer || 'Unknown'} />
             <DetailItem icon="calendar-outline" label="Release Date" value={currentItem.releaseDate || 'Unknown'} />
-            <DetailItem icon="business-outline" label="Distributor" value={currentItem.distributor || 'Unknown'} />
+            <DetailItem icon={isMusic ? "disc-outline" : "business-outline"} label={isMusic ? "Label" : "Distributor"} value={currentItem.distributor || 'Unknown'} />
           </View>
 
           <View style={styles.divider} />
@@ -182,7 +250,9 @@ export default function ItemDetailScreen({ route, navigation }) {
             </>
           ) : null}
 
-          {(currentItem.budget || currentItem.revenue) ? (
+          {renderTracklist()}
+
+          {!isMusic && (currentItem.budget || currentItem.revenue) ? (
             <>
               <Text style={styles.sectionLabel}>Financials</Text>
               <View style={styles.financialRow}>
@@ -205,13 +275,6 @@ export default function ItemDetailScreen({ route, navigation }) {
               <Text style={styles.notesText}>{currentItem.notes}</Text>
               <View style={styles.divider} />
             </>
-          ) : null}
-
-          {currentItem.barcode ? (
-            <View style={styles.barcodeRow}>
-              <Ionicons name="barcode-outline" size={18} color="#888888" />
-              <Text style={styles.barcodeText}> {currentItem.barcode}</Text>
-            </View>
           ) : null}
         </View>
 
@@ -300,7 +363,9 @@ const styles = StyleSheet.create({
   },
 
   coverImage: { width: 180, height: 270, borderRadius: 12, marginBottom: 20, backgroundColor: '#2a2a2a' },
+  coverImageMusic: { width: 270, height: 270 }, // Square for albums
   coverPlaceholder: { width: 180, height: 270, borderRadius: 12, marginBottom: 20, backgroundColor: '#2a2a2a', justifyContent: 'center', alignItems: 'center' },
+  coverPlaceholderMusic: { width: 270, height: 270 }, // Square for albums
   infoSection: { width: '100%', backgroundColor: '#1e1e1e', borderRadius: 12, padding: 20, borderWidth: 1, borderColor: '#333333' },
   mainTitle: { fontSize: 24, fontWeight: 'bold', color: '#ffffff', textAlign: 'center', marginBottom: 4 },
   subTitle: { fontSize: 15, color: '#aaaaaa', textAlign: 'center', marginBottom: 12 },
@@ -321,8 +386,43 @@ const styles = StyleSheet.create({
   financialLabel: { fontSize: 12, color: '#888888', marginBottom: 4 },
   financialValue: { fontSize: 16, color: '#4CAF50', fontWeight: 'bold' },
   notesText: { fontSize: 15, color: '#cccccc', lineHeight: 22, fontStyle: 'italic' },
-  barcodeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 8 },
-  barcodeText: { fontSize: 14, color: '#666666', fontFamily: 'monospace' },
+  tracklistContainer: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 8,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#333333',
+  },
+  sideHeader: {
+    color: '#e07a5f',
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginTop: 10,
+    marginBottom: 5,
+    textTransform: 'uppercase',
+  },
+  trackRow: {
+    flexDirection: 'row',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333333',
+    alignItems: 'center',
+  },
+  trackPosition: {
+    width: 40,
+    color: '#888888',
+    fontSize: 14,
+  },
+  trackTitle: {
+    flex: 1,
+    color: '#ffffff',
+    fontSize: 14,
+  },
+  trackDuration: {
+    color: '#888888',
+    fontSize: 14,
+    marginLeft: 10,
+  },
   actionButtons: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 16, gap: 16 },
   actionButton: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 16, borderRadius: 12, gap: 8 },
   editButton: { backgroundColor: '#333333', borderWidth: 1, borderColor: '#444444' },

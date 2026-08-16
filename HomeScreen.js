@@ -42,10 +42,10 @@ const COLLECTION_TYPES = ['CD', 'VHS', 'DVD', 'Blu-Ray', 'Laserdisc', 'Vinyl Rec
 const getIconForType = (type) => {
   switch (type) {
     case 'CD': return 'disc';
-    case 'VHS': return 'videocam';
-    case 'DVD': return 'disc';
-    case 'Blu-Ray': return 'disc';
-    case 'Laserdisc': return 'disc';
+    case 'VHS': return 'film';
+    case 'DVD': return 'play-circle';
+    case 'Blu-Ray': return 'videocam';
+    case 'Laserdisc': return 'tv';
     case 'Vinyl Record': return 'musical-notes';
     default: return 'folder';
   }
