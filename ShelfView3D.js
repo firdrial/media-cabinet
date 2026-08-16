@@ -13,7 +13,7 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { VHSTape } from './Tape3DViewer';
 import { Ionicons } from '@expo/vector-icons';
-import { getModel, resolveModelId } from './mediaModels';
+import { getModel, resolveModelId, getCameraDistance } from './mediaModels';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -367,8 +367,17 @@ export default function ShelfView3D({
 
   // Dynamically scale camera distances based on the physical size of the media.
   const maxDim = Math.max(model.dims.w, model.dims.h, model.dims.d);
-  const defaultCameraZ = maxDim * 2.7; // You noted this resting distance looks good
-  const focusZ = maxDim * 1.5;         // Pushed back from 0.85 so focused items don't engulf the screen
+  const defaultCameraZ = maxDim * 2.7; // resting/browsing distance — unchanged, not reported as an issue
+
+  // The camera doesn't move on focus (see ShelfScene above) — it stays at
+  // defaultCameraZ, and the tape animates to focusZ. So
+  // (defaultCameraZ - focusZ) is the effective camera-to-tape distance once
+  // focused. getCameraDistance (mediaModels.js) is the same fit math used by
+  // the standalone Tape3DViewer, so focus mode here frames each model
+  // identically to the fullscreen viewer, and any per-type tuning
+  // (model.cameraFit) only has to be set once, in one place.
+  const screenAspect = SCREEN_WIDTH / SCREEN_HEIGHT;
+  const focusZ = defaultCameraZ - getCameraDistance(modelId, screenAspect);
 
   const spacing = getSpacing(model, orientation);
   const spacingPx = spacing * PIXELS_PER_UNIT;

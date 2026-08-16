@@ -16,7 +16,9 @@ import {
 
 import * as THREE from 'three';
 import { warpQuad } from './modules/quad-detect';
-import { getFaceConfigs, getModel } from './mediaModels';
+import { getFaceConfigs, getModel, getCameraDistance } from './mediaModels';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // Native warp produces the image in normal Android Bitmap orientation.
 // EXGL does not reliably honor WebGL's texture flip flag, so we explicitly
@@ -242,14 +244,16 @@ export default function Tape3DViewer({
   textureMap,
   modelId = 'vhs',
 }) {
-  // Borrowing the exact camera math from Tape3DPreview (which you noted was perfect)
-  // so the Fullscreen Viewer frames the media identically to the Add/Edit preview.
+  // Camera distance now lives in mediaModels.js (getCameraDistance), so this
+  // viewer, ShelfView3D's focus mode, and any future viewer all frame the
+  // same model identically — and any per-type tuning (model.cameraFit) only
+  // has to be set once, in one place.
   const cameraParams = useMemo(() => {
-    const dims = getModel(modelId).dims;
-    const maxDim = Math.max(dims.w, dims.h, dims.d);
-    const z = Math.max(3.5, maxDim * 1.87);
+    const aspect = SCREEN_WIDTH / SCREEN_HEIGHT;
+    const z = getCameraDistance(modelId, aspect);
+
     return {
-      z: z,
+      z,
       minDist: z * 0.5,
       maxDist: z * 2.5,
     };
@@ -313,8 +317,8 @@ const styles = StyleSheet.create({
 
   canvas: {
     flex: 1,
-    width: Dimensions.get('window').width,
-    height: Dimensions.get('window').height,
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
   },
 
   loadingOverlay: {

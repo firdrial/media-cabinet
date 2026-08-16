@@ -183,6 +183,10 @@ export const MEDIA_MODELS = {
         generated: { kind: 'solid', colorFrom: ['front', 'back'] },
       },
     },
+    // Vinyl is the widest/flattest format relative to a portrait screen —
+    // if it still feels too tight or too loose after the shared default,
+    // tune it here without touching any other model. Example:
+    // cameraFit: { marginFactor: 1.5 },
   },
 };
 
@@ -219,6 +223,57 @@ export function getCaseTypes(format) {
     ];
   }
   return null; // single case type for other formats
+}
+
+/* ============================================================
+ * CAMERA FRAMING (Tape3DViewer + ShelfView3D focus mode)
+ *
+ * Single source of truth for "how far back does the camera need
+ * to be to frame this model nicely." Each model may optionally
+ * set a `cameraFit` override (e.g. `{ marginFactor: 1.5 }`) to
+ * hand-tune just that one type without touching the shared
+ * default or any other model.
+ * ============================================================ */
+
+const DEFAULT_CAMERA_FIT = {
+  fovDeg: 50,          // must match the Canvas camera's fov in each viewer
+  marginFactor: 1.35,  // headroom beyond the exact geometric fit
+  minDistance: 3.5,    // never closer than this, regardless of size
+};
+
+export function getCameraFit(modelId) {
+  const model = getModel(modelId);
+  return { ...DEFAULT_CAMERA_FIT, ...(model.cameraFit || {}) };
+}
+
+/**
+ * Distance the camera needs to be from the object's center so its
+ * front face (width x height) fits fully inside the camera's field of
+ * view, given the viewport's aspect ratio (width / height).
+ *
+ * Depth is intentionally excluded: these are flat, card-like objects
+ * viewed mostly face-on, so fitting the full 3D bounding sphere (as if
+ * someone might view them edge-on) overshoots and makes everything
+ * look smaller than necessary — most noticeably on wide/square formats
+ * like vinyl, where it isn't needed at all.
+ *
+ * Whichever axis is tighter — height against the vertical FOV, or
+ * width against the narrower horizontal FOV on a portrait screen —
+ * determines the distance.
+ */
+export function getCameraDistance(modelId, aspect) {
+  const model = getModel(modelId);
+  const fit = getCameraFit(modelId);
+
+  const vFov = (fit.fovDeg * Math.PI) / 180;
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+
+  const distanceForHeight = model.dims.h / 2 / Math.tan(vFov / 2);
+  const distanceForWidth = model.dims.w / 2 / Math.tan(hFov / 2);
+
+  const fitDistance = Math.max(distanceForHeight, distanceForWidth);
+
+  return Math.max(fit.minDistance, fitDistance * fit.marginFactor);
 }
 
 /* ----------------------------------------------------------
