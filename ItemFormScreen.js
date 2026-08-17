@@ -60,10 +60,19 @@ export default function ItemFormScreen({ route, navigation }) {
   const theme = getTheme(preferences.theme);
   const styles = getStyles(theme);
 
+  // FIX: Dynamically determine initial caseType based on the initial format's default model
+  const initialFormat = existingItem?.format || (allowedFormats ? allowedFormats[0] : 'VHS');
+  const initialCaseTypes = getCaseTypes(initialFormat);
+  const initialCaseType = existingItem?.caseType || (
+    initialCaseTypes 
+      ? initialCaseTypes[0].id 
+      : getModel(resolveModelId(initialFormat, null)).caseType || 'slipcase'
+  );
+
   const [title, setTitle] = useState(existingItem?.title || '');
   const [year, setYear] = useState(existingItem?.year || '');
-  const [format, setFormat] = useState(existingItem?.format || (allowedFormats ? allowedFormats[0] : 'VHS'));
-  const [caseType, setCaseType] = useState(existingItem?.caseType || 'slipcase');
+  const [format, setFormat] = useState(initialFormat);
+  const [caseType, setCaseType] = useState(initialCaseType);
   const [notes, setNotes] = useState(existingItem?.notes || '');
   
   const [externalId, setExternalId] = useState(existingItem?.externalId || existingItem?.tmdbId || '');
@@ -117,7 +126,8 @@ export default function ItemFormScreen({ route, navigation }) {
     if (types && !types.find(t => t.id === caseType)) {
       setCaseType(types[0].id);
     } else if (!types) {
-      setCaseType('slipcase');
+      // FIX: Fallback to the model's defined caseType instead of hardcoding 'slipcase'
+      setCaseType(getModel(resolveModelId(fmt, null)).caseType || 'slipcase');
     }
     setIsDirty(prev => prev ? prev : true);
   };
@@ -518,6 +528,7 @@ export default function ItemFormScreen({ route, navigation }) {
              setFormat(val);
              const types = getCaseTypes(val);
              if (types && !types.find(t => t.id === caseType)) setCaseType(types[0].id);
+             else if (!types) setCaseType(getModel(resolveModelId(val, null)).caseType || 'slipcase');
              setIsDirty(prev => prev ? prev : true);
           }} />
         )}

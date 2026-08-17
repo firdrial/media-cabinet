@@ -131,11 +131,11 @@ export const MEDIA_MODELS = {
    * ---------------------------------------------------------- */
   bluray: {
     id: 'bluray',
-    label: 'Blu-Ray Case',
+    label: 'Blu-Ray Keep Case', // Renamed
     format: 'Blu-Ray',
     category: MEDIA_CATEGORIES.FILM,
     caseType: 'keep',
-    scanNoun: 'Blu-ray Case',
+    scanNoun: 'Keep Case', // Renamed
     cornerRadius: 0.03, // 3mm physical corner radius (mm / 100)
     dims: { w: 1.35, h: 1.71, d: 0.13 },
     shelf: {
@@ -149,6 +149,32 @@ export const MEDIA_MODELS = {
       right:  { source: 'scan', label: 'Right Spine', guideNoun: 'RIGHT SPINE',  out: [130, 1710] },
       top:    { source: 'scan', label: 'Top Edge',    guideNoun: 'TOP EDGE',     out: [1350, 130] },
       bottom: { source: 'scan', label: 'Bottom Edge', guideNoun: 'BOTTOM EDGE',  out: [1350, 130] },
+    },
+  },
+
+  /* ----------------------------------------------------------
+   * Blu-Ray — slipcover (O-Card)
+   * ---------------------------------------------------------- */
+  bluraySlipcover: {
+    id: 'bluraySlipcover',
+    label: 'Blu-Ray Slipcover',
+    format: 'Blu-Ray',
+    category: MEDIA_CATEGORIES.FILM,
+    caseType: 'slipcover',
+    scanNoun: 'Slipcover',
+    // Intentionally omitting cornerRadius so the renderer falls back to standard sharp-cornered boxGeometry
+    dims: { w: 1.38, h: 1.74, d: 0.15 }, // Slightly larger to slide over the keep case
+    shelf: {
+      orientations: ['spine', 'cover'],
+      spacing: { spine: 0.18, cover: 1.45 },
+    },
+    faces: {
+      front:  { source: 'scan', label: 'Front Cover', guideNoun: 'FRONT cover',  out: [1380, 1740] },
+      left:   { source: 'scan', label: 'Left Spine',  guideNoun: 'LEFT SPINE',   out: [150, 1740] },
+      back:   { source: 'scan', label: 'Back Cover',  guideNoun: 'BACK cover',   out: [1380, 1740] },
+      right:  { source: 'scan', label: 'Right Spine', guideNoun: 'RIGHT SPINE',  out: [150, 1740] },
+      top:    { source: 'scan', label: 'Top Edge',    guideNoun: 'TOP EDGE',     out: [1380, 150] },
+      bottom: { source: 'scan', label: 'Bottom Edge', guideNoun: 'BOTTOM EDGE',  out: [1380, 150] },
     },
   },
 
@@ -291,6 +317,7 @@ export function getModel(modelId) {
 
 export function resolveModelId(format, caseType) {
   if (format === 'VHS' && caseType === 'double') return 'vhsDouble';
+  if (format === 'Blu-Ray' && caseType === 'slipcover') return 'bluraySlipcover';
   return FORMAT_DEFAULT_MODEL[format] || DEFAULT_MODEL_ID;
 }
 
@@ -300,6 +327,12 @@ export function getCaseTypes(format) {
     return [
       { id: 'slipcase', label: 'Slipcase' },
       { id: 'double', label: 'Double' },
+    ];
+  }
+  if (format === 'Blu-Ray') {
+    return [
+      { id: 'keep', label: 'Keep Case' },
+      { id: 'slipcover', label: 'Slipcover' },
     ];
   }
   return null; // single case type for other formats
