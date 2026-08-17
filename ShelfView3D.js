@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -80,10 +80,11 @@ function ItemOnShelf({
   position,
   orientation,
   isFocused,
+  focusedId,
   cullDistance,
   dragRotationRef,
-  modelId,
-  model,
+  itemModelId,
+  itemModel,
   focusZ,
   bodyColor,
   placeholderColor,
@@ -166,7 +167,9 @@ function ItemOnShelf({
         dragRotationRef.current = { x: 0, y: 0, z: 0 };
       }
     } else {
-      targetPos.current.set(position[0], position[1], position[2]);
+      // Push non-focused items back into the shelf when another item is focused
+      const pushBackZ = focusedId ? -1.2 : 0;
+      targetPos.current.set(position[0], position[1], position[2] + pushBackZ);
 
       targetRot.current.set(
         0,
@@ -204,14 +207,12 @@ function ItemOnShelf({
     }
   });
 
-  const placeholderWidth = getFaceWidth(model, orientation);
-
   return (
     <group ref={groupRef} position={position}>
       {renderFull || isFocused ? (
         <MediaItem3D 
           textureMap={item.textureMap} 
-          modelId={modelId} 
+          modelId={itemModelId} 
           bodyColor={bodyColor}
           placeholderColor={placeholderColor}
           missingColor={missingColor}
@@ -220,7 +221,7 @@ function ItemOnShelf({
         />
       ) : (
         <mesh>
-          <boxGeometry args={[placeholderWidth, model.dims.h, model.dims.d]} />
+          <boxGeometry args={[itemModel.dims.w, itemModel.dims.h, itemModel.dims.d]} />
           <meshStandardMaterial color={placeholderColor} roughness={0.85} />
         </mesh>
       )}
@@ -234,15 +235,13 @@ function ItemOnShelf({
 
 function ShelfScene({
   items,
+  itemPositions,
   orientation,
   focusedId,
   scrollXRef,
   snapCameraRef,
   cullDistance,
   dragRotationRef,
-  spacing,
-  modelId,
-  model,
   defaultCameraZ,
   focusZ,
   bodyColor,
@@ -297,7 +296,12 @@ function ShelfScene({
       <pointLight position={[0, 3, 3]} intensity={0.25} distance={12} />
 
       {items.map((item, itemIndex) => {
-        const wx = itemIndex * spacing;
+        const wx = itemPositions[itemIndex] || 0;
+
+        const itemModelId = item.modelId 
+          || item.textureMap?.modelId 
+          || resolveModelId(item.format, item.caseType);
+        const itemModel = getModel(itemModelId);
 
         return (
           <ItemOnShelf
@@ -306,10 +310,11 @@ function ShelfScene({
             position={[wx, 0, 0]}
             orientation={orientation}
             isFocused={focusedId === item.id}
+            focusedId={focusedId}
             cullDistance={cullDistance}
             dragRotationRef={dragRotationRef}
-            modelId={modelId}
-            model={model}
+            itemModelId={itemModelId}
+            itemModel={itemModel}
             focusZ={focusZ}
             bodyColor={bodyColor}
             placeholderColor={placeholderColor}
@@ -326,14 +331,15 @@ function ShelfScene({
  * NATIVE HIT TARGETS
  * ============================================================ */
 
-function ShelfHitTargets({ items, orientation, onFocus, contentWidth, spacingPx, model }) {
+function ShelfHitTargets({ items, itemPositions, orientation, onFocus, contentWidth, model }) {
   const itemHitHeight = model.dims.h * PIXELS_PER_UNIT;
   const hitWidth = getFaceWidth(model, orientation) * PIXELS_PER_UNIT * HIT_TARGET_WIDTH_SCALE;
 
   return (
     <View style={{ width: contentWidth, height: SCREEN_HEIGHT }}>
       {items.map((item, itemIndex) => {
-        const centerX = SCREEN_WIDTH / 2 + itemIndex * spacingPx;
+        const wx = itemPositions[itemIndex] || 0;
+        const centerX = SCREEN_WIDTH / 2 + wx * PIXELS_PER_UNIT;
         const left = centerX - hitWidth / 2;
         const top = SCREEN_HEIGHT / 2 - itemHitHeight / 2;
 
@@ -398,37 +404,83 @@ export default function ShelfView3D({
   const dragRotationRef = useRef({ x: 0, y: 0, z: 0 });
   const dragBaseRotationRef = useRef({ x: 0, y: 0, z: 0 });
 
-  // Derive the uniform model for the entire shelf from the first item
+  // Derive the base layout model for the shelf from the first item
   const firstItem = items[0];
-  const modelId = firstItem 
+  const baseModelId = firstItem 
     ? (firstItem.modelId || firstItem.textureMap?.modelId || resolveModelId(firstItem.format, firstItem.caseType)) 
     : DEFAULT_MODEL_ID;
-  const model = getModel(modelId);
+  const model = getModel(baseModelId);
+
+  // Determine supported orientations and active orientation (Fixes vinyl bug)
+  const supportedOrientations = model.shelf.orientations && model.shelf.orientations.length
+    ? model.shelf.orientations
+    : ['spine', 'cover'];
+  const activeOrientation = supportedOrientations.includes(orientation)
+    ? orientation
+    : supportedOrientations[0];
+
+  // Calculate uniform gap based on the base model's standard spacing
+  const baseSpacing = getSpacing(model, activeOrientation);
+  const baseWidth = getFaceWidth(model, activeOrientation);
+  const uniformGap = Math.max(0, baseSpacing - baseWidth);
+
+  // Calculate cumulative positions maintaining a consistent gap regardless of item size
+  const itemPositions = useMemo(() => {
+    const positions = [];
+    let currentCenter = 0;
+    
+    items.forEach((item, index) => {
+      positions.push(currentCenter);
+      
+      if (index < items.length - 1) {
+        const currentId = item.modelId || item.textureMap?.modelId || resolveModelId(item.format, item.caseType);
+        const currentModel = getModel(currentId);
+        const currentWidth = getFaceWidth(currentModel, activeOrientation);
+        
+        const nextItem = items[index + 1];
+        const nextId = nextItem.modelId || nextItem.textureMap?.modelId || resolveModelId(nextItem.format, nextItem.caseType);
+        const nextModel = getModel(nextId);
+        const nextWidth = getFaceWidth(nextModel, activeOrientation);
+        
+        // Distance to next center = half of current + gap + half of next
+        currentCenter += (currentWidth / 2) + uniformGap + (nextWidth / 2);
+      }
+    });
+    return positions;
+  }, [items, activeOrientation, uniformGap]);
 
   // Determine category for dynamic UI (Artist vs Director)
-  const category = getCategory(modelId);
+  const category = getCategory(baseModelId);
   const isMusic = category === MEDIA_CATEGORIES.MUSIC;
 
   // Find the currently focused item to display metadata
   const focusedItem = focusedId ? items.find(item => item.id === focusedId) : null;
 
+  // Fix 1: Camera distance calculation to prevent behind-shelf rendering
   const maxDim = Math.max(model.dims.w, model.dims.h, model.dims.d);
-  const defaultCameraZ = maxDim * 2.7; 
-
   const screenAspect = SCREEN_WIDTH / SCREEN_HEIGHT;
-  const focusZ = defaultCameraZ - getCameraDistance(modelId, screenAspect);
+  const cameraFitDistance = getCameraDistance(baseModelId, screenAspect);
 
-  const spacing = getSpacing(model, orientation);
-  const spacingPx = spacing * PIXELS_PER_UNIT;
+  const shelfDepthExtent =
+    (activeOrientation === 'spine' ? model.dims.w : model.dims.d) / 2;
 
-  const maxCameraX = Math.max(0, (items.length - 1) * spacing);
+  const defaultCameraZ = Math.max(
+    maxDim * 2.7,
+    cameraFitDistance + shelfDepthExtent + model.dims.d / 2 + 0.15
+  );
+  const focusZ = defaultCameraZ - cameraFitDistance;
+
+  const maxCameraX = itemPositions.length > 0 ? itemPositions[itemPositions.length - 1] : 0;
   const maxScrollPx = maxCameraX * PIXELS_PER_UNIT;
 
   const contentWidth = SCREEN_WIDTH + maxScrollPx;
   const contentHeight = SCREEN_HEIGHT;
 
+  // Fix 3: Increase cull distance to account for item's own face width
   const cullDistance =
-    SCREEN_WIDTH / PIXELS_PER_UNIT / 2 + H_VISIBLE_MARGIN;
+    SCREEN_WIDTH / PIXELS_PER_UNIT / 2 +
+    getFaceWidth(model, activeOrientation) / 2 +
+    H_VISIBLE_MARGIN;
 
   useEffect(() => {
     if (focusedId && !items.some(item => item.id === focusedId)) {
@@ -460,6 +512,7 @@ export default function ShelfView3D({
 
   const handleOrientationChange = () => {
     if (focusedId) return;
+    if (supportedOrientations.length < 2) return;
 
     setOrientation(current =>
       current === 'spine' ? 'cover' : 'spine'
@@ -494,7 +547,7 @@ export default function ShelfView3D({
 
     const randomIndex = Math.floor(Math.random() * items.length);
     const randomItem = items[randomIndex];
-    const targetScrollX = randomIndex * spacingPx;
+    const targetScrollX = (itemPositions[randomIndex] || 0) * PIXELS_PER_UNIT;
 
     if (scrollViewRef.current) {
       scrollViewRef.current.scrollTo({
@@ -564,15 +617,13 @@ export default function ShelfView3D({
 
         <ShelfScene
           items={items}
-          orientation={orientation}
+          itemPositions={itemPositions}
+          orientation={activeOrientation}
           focusedId={focusedId}
           scrollXRef={scrollXRef}
           snapCameraRef={snapCameraRef}
           cullDistance={cullDistance}
           dragRotationRef={dragRotationRef}
-          spacing={spacing}
-          modelId={modelId}
-          model={model}
           defaultCameraZ={defaultCameraZ}
           focusZ={focusZ}
           bodyColor={theme.cardBackground}
@@ -584,7 +635,7 @@ export default function ShelfView3D({
 
       <ScrollView
         ref={scrollViewRef}
-        key={`h-${orientation}`}
+        key={`h-${activeOrientation}`}
         horizontal
         style={StyleSheet.absoluteFill}
         contentContainerStyle={{
@@ -601,7 +652,7 @@ export default function ShelfView3D({
         alwaysBounceHorizontal={false}
         directionalLockEnabled
         decelerationRate="fast"
-        snapToInterval={Math.max(spacingPx, 1)}
+        snapToInterval={Math.max(baseSpacing * PIXELS_PER_UNIT, 1)}
         snapToAlignment="start"
         disableIntervalMomentum={false}
         nestedScrollEnabled
@@ -609,10 +660,10 @@ export default function ShelfView3D({
       >
         <ShelfHitTargets
           items={items}
-          orientation={orientation}
+          itemPositions={itemPositions}
+          orientation={activeOrientation}
           onFocus={handleFocus}
           contentWidth={contentWidth}
-          spacingPx={spacingPx}
           model={model}
         />
       </ScrollView>
@@ -735,7 +786,8 @@ export default function ShelfView3D({
         </>
       )}
 
-      {!focusedId && (
+      {/* Hide toggle button if only 1 orientation is supported */}
+      {!focusedId && supportedOrientations.length > 1 && (
         <View style={styles.controlsContainer} pointerEvents="box-none">
           <TouchableOpacity
             style={styles.controlButton}
@@ -743,7 +795,7 @@ export default function ShelfView3D({
           >
             <Ionicons
               name={
-                orientation === 'spine'
+                activeOrientation === 'spine'
                   ? 'image-outline'
                   : 'book-outline'
               }
@@ -752,7 +804,7 @@ export default function ShelfView3D({
             />
 
             <Text style={styles.controlText}>
-              {orientation === 'spine' ? 'Show Covers' : 'Show Spines'}
+              {activeOrientation === 'spine' ? 'Show Covers' : 'Show Spines'}
             </Text>
           </TouchableOpacity>
         </View>
