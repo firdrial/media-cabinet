@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, FlatList, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { searchMovieByText } from './tmdbService';
 import { searchAlbumByText } from './musicService';
 import { resolveModelId, getCategory, MEDIA_CATEGORIES } from './mediaModels';
@@ -8,6 +9,11 @@ import { getTheme, DEFAULT_THEME_ID } from './theme';
 
 export default function SearchScreen({ route, navigation }) {
   const [preferences, setPreferences] = useState({ theme: DEFAULT_THEME_ID });
+
+  // Hide the native React Navigation header so we can use our custom one
+  useEffect(() => {
+    navigation.setOptions({ headerShown: false });
+  }, [navigation]);
 
   // Load theme preferences
   useEffect(() => {
@@ -32,11 +38,9 @@ export default function SearchScreen({ route, navigation }) {
   const collectionId = route.params?.collectionId || null;
   const returnToCollection = route.params?.returnToCollection || false;
   
-  // Default to empty array to safely extract the single format
   const allowedFormats = route.params?.allowedFormats || [];
   const displayFormat = allowedFormats.length > 0 ? allowedFormats[0] : 'Unknown';
   
-  // Determine the media category to route the search to the correct API
   const primaryFormat = allowedFormats.length > 0 ? allowedFormats[0] : 'VHS';
   const modelId = resolveModelId(primaryFormat);
   const category = getCategory(modelId);
@@ -62,13 +66,12 @@ export default function SearchScreen({ route, navigation }) {
     navigation.navigate('AddItem', { 
       searchResult: item,
       collectionId,
-      allowedFormats, // Preserved as an array to prevent breaking ItemFormScreen
+      allowedFormats,
       returnToCollection,
     });
   };
 
   const renderResult = ({ item }) => {
-    // Use the standardized coverArtUrl provided by both services
     const posterUrl = item.coverArtUrl;
 
     return (
@@ -76,19 +79,16 @@ export default function SearchScreen({ route, navigation }) {
         {posterUrl ? (
           <Image 
             source={{ uri: posterUrl }} 
-            // Apply square dimensions for music formats
             style={[styles.resultPoster, isMusic && styles.resultPosterMusic]} 
             resizeMode="cover"
           />
         ) : (
-          // Apply square dimensions for music formats
           <View style={[styles.resultPosterPlaceholder, isMusic && styles.resultPosterMusic]} />
         )}
         
         <View style={styles.resultInfo}>
           <Text style={styles.resultTitle} numberOfLines={2}>{item.title}</Text>
           
-          {/* Display Artist for Music, Director for Movies */}
           {item.artist ? (
             <Text style={styles.resultFormat} numberOfLines={1}>{item.artist}</Text>
           ) : item.director ? (
@@ -103,10 +103,22 @@ export default function SearchScreen({ route, navigation }) {
 
   return (
     <View style={styles.container}>
+      <View style={styles.customHeader}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="chevron-back" size={28} color={theme.headerTitle} />
+        </TouchableOpacity>
+        <Text style={styles.customHeaderTitle}>Search</Text>
+        <View style={{ width: 40 }} />
+      </View>
+
       {collectionId && allowedFormats.length > 0 && (
         <View style={styles.collectionBanner}>
           <Text style={styles.collectionBannerText}>
-            Adding to collection ({displayFormat})
+            Adding {displayFormat} to Collection
           </Text>
         </View>
       )}
@@ -150,6 +162,28 @@ export default function SearchScreen({ route, navigation }) {
 
 const getStyles = (theme) => ({
   container: { flex: 1, backgroundColor: theme.background },
+  customHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 50,
+    paddingBottom: 12,
+    backgroundColor: theme.headerBackground,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.headerBorder,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  customHeaderTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: theme.headerTitle,
+  },
   collectionBanner: {
     backgroundColor: theme.accentSoft,
     padding: 12,
@@ -169,7 +203,7 @@ const getStyles = (theme) => ({
   list: { padding: 15 },
   resultCard: { backgroundColor: theme.cardBackground, padding: 12, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: theme.cardBorder, flexDirection: 'row', alignItems: 'center' },
   resultPoster: { width: 50, height: 75, borderRadius: 6, marginRight: 12, backgroundColor: theme.chipBackground },
-  resultPosterMusic: { width: 60, height: 60 }, // Square aspect ratio for albums
+  resultPosterMusic: { width: 60, height: 60 },
   resultPosterPlaceholder: { width: 50, height: 75, borderRadius: 6, marginRight: 12, backgroundColor: theme.chipBackground },
   resultInfo: { flex: 1 },
   resultTitle: { fontSize: 16, fontWeight: 'bold', color: theme.titleText, marginBottom: 4 },

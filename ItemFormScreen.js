@@ -39,7 +39,10 @@ export default function ItemFormScreen({ route, navigation }) {
 
   const [preferences, setPreferences] = useState({ theme: DEFAULT_THEME_ID });
 
-  // Load theme preferences
+  useEffect(() => {
+    navigation.setOptions({ headerShown: false });
+  }, [navigation]);
+
   useEffect(() => {
     const loadPrefs = async () => {
       try {
@@ -63,7 +66,6 @@ export default function ItemFormScreen({ route, navigation }) {
   const [caseType, setCaseType] = useState(existingItem?.caseType || 'slipcase');
   const [notes, setNotes] = useState(existingItem?.notes || '');
   
-  // Standardized API fields (replaces tmdbId/posterPath)
   const [externalId, setExternalId] = useState(existingItem?.externalId || existingItem?.tmdbId || '');
   const [apiSource, setApiSource] = useState(existingItem?.apiSource || '');
   const [coverArtUrl, setCoverArtUrl] = useState(() => {
@@ -89,11 +91,8 @@ export default function ItemFormScreen({ route, navigation }) {
   const [director, setDirector] = useState(existingItem?.director || '');
   const [writer, setWriter] = useState(existingItem?.writer || '');
 
-  // Music-specific state
   const [tracklist, setTracklist] = useState(existingItem?.tracklist || []);
   const [tracklistStyle, setTracklistStyle] = useState(existingItem?.tracklistStyle || '');
-  
-  // NEW: State to hold both API tracklists for dynamic swapping based on format
   const [sequentialTracklist, setSequentialTracklist] = useState([]);
   const [sidesTracklist, setSidesTracklist] = useState(null);
   
@@ -104,10 +103,7 @@ export default function ItemFormScreen({ route, navigation }) {
   const category = getCategory(modelId);
   const isMusic = category === MEDIA_CATEGORIES.MUSIC;
 
-  // Track unsaved changes
   const [isDirty, setIsDirty] = useState(false);
-  
-  // Ref to bypass preventRemove alert during active save operations
   const isSavingRef = useRef(false);
 
   const handleChange = (setter) => (value) => {
@@ -126,7 +122,6 @@ export default function ItemFormScreen({ route, navigation }) {
     setIsDirty(prev => prev ? prev : true);
   };
 
-  // Prevent user from leaving if there are unsaved changes
   usePreventRemove(isDirty, ({ data }) => {
     if (isSavingRef.current) {
       navigation.dispatch(data.action);
@@ -161,7 +156,6 @@ export default function ItemFormScreen({ route, navigation }) {
         setExternalId(result.id);
         setApiSource(result.source);
         
-        // Set initial cover art (thumbnail from search)
         setCoverArtUrl(result.coverArtUrl || null);
         
         let details = null;
@@ -193,7 +187,6 @@ export default function ItemFormScreen({ route, navigation }) {
           setWriter(details.writer);
           
           if (details.source === 'Discogs' || details.source === 'Spotify') {
-            // NEW: Store both tracklists from the API
             setSequentialTracklist(details.tracklist || []);
             setSidesTracklist(details.sidesTracklist || null);
             setMediaFormats(details.formats || []);
@@ -207,7 +200,6 @@ export default function ItemFormScreen({ route, navigation }) {
     fetchData();
   }, [route.params?.searchResult, isEdit]);
 
-  // NEW: Dynamically swap the tracklist based on the selected physical format
   useEffect(() => {
     if (!isMusic) return;
 
@@ -378,7 +370,7 @@ export default function ItemFormScreen({ route, navigation }) {
         if (targetCollectionId !== itemCollectionId) return false;
         
         if (externalId && item.externalId && String(item.externalId) === String(externalId)) return true;
-        if (externalId && item.tmdbId && String(item.tmdbId) === String(externalId)) return true; // Legacy check
+        if (externalId && item.tmdbId && String(item.tmdbId) === String(externalId)) return true;
         if (title && year && item.title === title && String(item.year) === String(year)) return true;
         if (title && !year && item.title === title) return true;
         
@@ -413,7 +405,6 @@ export default function ItemFormScreen({ route, navigation }) {
       const groupedTracks = [];
 
       tracklist.forEach((track, index) => {
-        // Extract the side letter (e.g., 'A' from 'A1', 'B' from 'B1')
         const side = track.position ? track.position.match(/[A-Z]/i)?.[0] : null;
         
         if (side && side !== currentSide) {
@@ -444,7 +435,6 @@ export default function ItemFormScreen({ route, navigation }) {
       );
     }
 
-    // Sequential (CDs, etc)
     return (
       <>
         <Text style={styles.label}>Tracklist</Text>
@@ -464,21 +454,33 @@ export default function ItemFormScreen({ route, navigation }) {
   const currentCaseTypes = getCaseTypes(format);
 
   return (
-    <>
+    <View style={styles.container}>
+      <View style={styles.customHeader}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="chevron-back" size={28} color={theme.headerTitle} />
+        </TouchableOpacity>
+        <Text style={styles.customHeaderTitle}>
+          {isEdit ? 'Edit Item' : 'Add New Item'}
+        </Text>
+        <View style={{ width: 40 }} />
+      </View>
+
       <KeyboardAwareScrollView
-        style={styles.container}
+        style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         enableOnAndroid={true}
         extraScrollHeight={20}
         keyboardOpeningTime={0}
       >
-        <Text style={styles.header}>{isEdit ? 'Edit Item' : 'Add New Item'}</Text>
-
         {collectionId && allowedFormats && (
           <View style={styles.collectionBanner}>
             <Text style={styles.collectionBannerText}>
-              Adding to collection ({allowedFormats.join(' • ')})
+              Adding {allowedFormats.join(' • ')} to Collection
             </Text>
           </View>
         )}
@@ -720,14 +722,35 @@ export default function ItemFormScreen({ route, navigation }) {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
-    </>
+    </View>
   );
 }
 
 const getStyles = (theme) => ({
   container: { flex: 1, backgroundColor: theme.background },
-  scrollContent: { padding: 20, paddingTop: 60 }, 
-  header: { fontSize: 32, fontWeight: 'bold', color: theme.textPrimary, marginBottom: 20, textAlign: 'center' },
+  customHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 50,
+    paddingBottom: 12,
+    backgroundColor: theme.headerBackground,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.headerBorder,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  customHeaderTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: theme.headerTitle,
+  },
+  scrollContent: { padding: 20, paddingTop: 20 }, 
   collectionBanner: {
     backgroundColor: theme.accentSoft,
     padding: 10,
