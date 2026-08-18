@@ -270,7 +270,8 @@ export function MediaItem3D({
   placeholderColor = '#303030',
   missingColor = '#151515',
   title = '',
-  spineTextColor = '#ffffff', // <-- Added for theme color support
+  spineTextColor = '#ffffff',
+  isFocused = true, // <--- Added for performance (defaults to true for standalone viewer)
 }) {
   const map = textureMap || EMPTY_TEXTURE_MAP;
   const model = getModel(modelId);
@@ -308,8 +309,10 @@ export function MediaItem3D({
         missingColor={missingColor}
       />
 
-      {/* Renders text on generated spines */}
-      <SpineLabels modelId={modelId} title={title} spineTextColor={spineTextColor} />
+      {/* ONLY render the heavy 3D text when the item is focused */}
+      {isFocused && (
+        <SpineLabels modelId={modelId} title={title} spineTextColor={spineTextColor} />
+      )}
     </group>
   );
 }

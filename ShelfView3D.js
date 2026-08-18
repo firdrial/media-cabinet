@@ -218,6 +218,7 @@ function ItemOnShelf({
           missingColor={missingColor}
           title={item.title || item.name || ''}
           spineTextColor={spineTextColor}
+          isFocused={isFocused} // <--- Pass focus state down to skip heavy 3D text on non-focused items
         />
       ) : (
         <mesh>
@@ -977,7 +978,7 @@ const getStyles = (theme) => ({
   focusedItemMeta: {
     color: theme.pillText,
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '500', 
     textAlign: 'center',
     opacity: 0.85,
   },
