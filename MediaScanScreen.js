@@ -49,6 +49,18 @@ function isConvexQuadJS(pts) {
   return true;
 }
 
+const safeDeleteCacheFile = (uri) => {
+  if (!uri || !uri.startsWith('file://')) return;
+  try {
+    const file = new File(uri);
+    if (file.exists) {
+      file.delete();
+    }
+  } catch (error) {
+    console.warn('[MediaScan] Failed to delete cache file:', error);
+  }
+};
+
 function DashedLine({ x1, y1, x2, y2, accentColor }) {
   const dx = x2 - x1;
   const dy = y2 - y1;
@@ -280,6 +292,8 @@ export default function MediaScanScreen({ navigation, route }) {
         { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
       );
 
+      safeDeleteCacheFile(photo.uri);
+
       const imgW = normalized.width;
       const imgH = normalized.height;
 
@@ -343,6 +357,9 @@ export default function MediaScanScreen({ navigation, route }) {
         [{ rotate: 90 }],
         { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
       );
+      
+      safeDeleteCacheFile(img.uri);
+
       const nw = res.width;
       const nh = res.height;
       const mapped = quad.map((p) => clampPoint(img.imgH - 1 - p.y, p.x, nw, nh));
@@ -359,7 +376,6 @@ export default function MediaScanScreen({ navigation, route }) {
     }
   };
 
-  // --- NEW HELPER FUNCTION FOR FILE CLEANUP ---
   const cleanupCapturedImages = async (imagesObj) => {
     if (!imagesObj) return;
     for (const [faceKey, faceData] of Object.entries(imagesObj)) {
@@ -405,6 +421,8 @@ export default function MediaScanScreen({ navigation, route }) {
         { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
       );
 
+      safeDeleteCacheFile(img.uri);
+
       const scanDirectory = new Directory(Paths.document, 'media-scans');
       if (!scanDirectory.exists) {
         scanDirectory.create({ intermediates: true, idempotent: true });
@@ -416,6 +434,8 @@ export default function MediaScanScreen({ navigation, route }) {
         `${imageId}-${currentStep.key}-source.jpg`
       );
       sourceFile.copy(savedFile);
+
+      safeDeleteCacheFile(finalResult.uri);
 
       const cornersNorm = quad.map((p) => ({
         x: Math.max(0, Math.min(1, (p.x - originX) / cropW)),
@@ -490,12 +510,12 @@ export default function MediaScanScreen({ navigation, route }) {
   };
 
   const retake = () => {
+    safeDeleteCacheFile(reviewRef.current?.uri);
     reviewRef.current = null;
     setReview(null);
     setCorners(null);
   };
 
-  // --- UPDATED EXIT SCAN TO CLEANUP DISCARDED FILES ---
   const exitScan = () => {
     Alert.alert(
       'Discard Scan?',
@@ -506,6 +526,7 @@ export default function MediaScanScreen({ navigation, route }) {
           text: 'Discard',
           style: 'destructive',
           onPress: async () => {
+            safeDeleteCacheFile(reviewRef.current?.uri);
             await cleanupCapturedImages(capturedImages);
             navigation.goBack();
           },
@@ -514,7 +535,6 @@ export default function MediaScanScreen({ navigation, route }) {
     );
   };
 
-  // --- UPDATED GO BACK TO CLEANUP SPECIFIC STEP OR ALL STEPS ---
   const goBack = async () => {
     if (review) { retake(); return; }
     if (stepIndex > 0) {
