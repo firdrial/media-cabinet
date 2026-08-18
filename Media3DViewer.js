@@ -39,6 +39,7 @@ const warpCache = new Map();
 const EMPTY_TEXTURE_MAP = {};
 
 // Legacy export for components not yet migrated to modelId (e.g. GuideBox3D)
+export const clearWarpCache = () => warpCache.clear();
 export const FACE_CONFIGS = getFaceConfigs(DEFAULT_MODEL_ID);
 
 function faceUrl(face) {

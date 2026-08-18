@@ -13,6 +13,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { File } from 'expo-file-system';
 import { saveItem, loadItemsIndex } from './mediaStorage';
+import { clearWarpCache } from './Media3DViewer';
 import { useFocusEffect, usePreventRemove } from '@react-navigation/native';
 import { getFullMovieDetails } from './tmdbService';
 import { getFullAlbumDetails } from './musicService';
@@ -388,6 +389,8 @@ export default function ItemFormScreen({ route, navigation }) {
         }
       }
     }
+
+    clearWarpCache();
 
     try {
       await saveItem(itemData);

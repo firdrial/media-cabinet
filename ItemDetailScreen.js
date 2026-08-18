@@ -8,6 +8,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import Media3DPreview from './Media3DPreview';
 import { resolveModelId, getCategory, MEDIA_CATEGORIES } from './mediaModels';
 import { getTheme, DEFAULT_THEME_ID } from './theme';
+import { clearWarpCache } from './Media3DViewer';
 
 export default function ItemDetailScreen({ route, navigation }) {
   const { item } = route.params;
@@ -72,6 +73,8 @@ export default function ItemDetailScreen({ route, navigation }) {
                   }
                 }
               }
+
+              clearWarpCache();
 
               saveItemToStorage(updated);
               return updated;
