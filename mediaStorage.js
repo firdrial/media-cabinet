@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { File, Paths } from 'expo-file-system';
 
 // ---------------------------------------------------------
 // NEW STORAGE KEYS (Phase 1)
@@ -141,7 +142,48 @@ export async function saveItem(item) {
   ]);
 }
 
+/**
+ * Deletes all local texture files associated with an item.
+ * Only targets file:// URIs (local files), ignores remote URLs.
+ */
+async function cleanupItemFiles(item) {
+  const textureMap = item?.textureMap;
+  if (!textureMap) return;
+
+  for (const [faceKey, faceData] of Object.entries(textureMap)) {
+    // Skip non-face entries like "modelId" which is just a string
+    if (!faceData || typeof faceData !== 'object' || !faceData.uri) continue;
+
+    try {
+      const uri = faceData.uri;
+      if (uri && uri.startsWith('file://')) {
+        const file = new File(uri);
+        if (file.exists) {
+          file.delete();
+        }
+      }
+    } catch (error) {
+      // Log but don't block deletion — a missing file shouldn't
+      // prevent the user from deleting the item
+      console.warn(`Failed to delete texture for "${faceKey}":`, error);
+    }
+  }
+}
+
 export async function deleteItem(id) {
+  // Step 1: Load the item so we can find its files
+  try {
+    const itemJson = await AsyncStorage.getItem(itemKey(id));
+    if (itemJson) {
+      const item = JSON.parse(itemJson);
+      await cleanupItemFiles(item);
+    }
+  } catch (error) {
+    console.warn('File cleanup failed for item:', id, error);
+    // Continue with deletion even if cleanup fails
+  }
+
+  // Step 2: Remove from AsyncStorage (your existing logic)
   const ids = await getItemIds();
   await AsyncStorage.multiSet([
     [ITEM_IDS_KEY, JSON.stringify(ids.filter(itemId => itemId !== id))],

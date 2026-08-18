@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { File } from 'expo-file-system';
 import { saveItem, loadItems } from './mediaStorage';
 import { useFocusEffect, usePreventRemove } from '@react-navigation/native';
 import { getFullMovieDetails } from './tmdbService';
@@ -126,7 +127,6 @@ export default function ItemFormScreen({ route, navigation }) {
     if (types && !types.find(t => t.id === caseType)) {
       setCaseType(types[0].id);
     } else if (!types) {
-      // FIX: Fallback to the model's defined caseType instead of hardcoding 'slipcase'
       setCaseType(getModel(resolveModelId(fmt, null)).caseType || 'slipcase');
     }
     setIsDirty(prev => prev ? prev : true);
@@ -146,7 +146,28 @@ export default function ItemFormScreen({ route, navigation }) {
         {
           text: 'Discard',
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
+            // --- NEW: Clean up newly scanned textures that are being discarded ---
+            if (textureMap) {
+              const oldUris = new Set();
+              if (isEdit && existingItem?.textureMap) {
+                Object.values(existingItem.textureMap).forEach(face => {
+                  if (face?.uri && face.uri.startsWith('file://')) oldUris.add(face.uri);
+                });
+              }
+
+              for (const faceData of Object.values(textureMap)) {
+                if (faceData?.uri && faceData.uri.startsWith('file://') && !oldUris.has(faceData.uri)) {
+                  try {
+                    const file = new File(faceData.uri);
+                    if (file.exists) file.delete();
+                  } catch (e) {
+                    console.warn('[ItemForm] Failed to delete discarded new texture:', e);
+                  }
+                }
+              }
+            }
+
             isSavingRef.current = true;
             navigation.dispatch(data.action);
           },
@@ -346,6 +367,27 @@ export default function ItemFormScreen({ route, navigation }) {
       country,
       dateAdded: existingItem?.dateAdded || new Date().toISOString(), 
     };
+
+    // --- NEW: Clean up old textures that were replaced by the new scan ---
+    if (isEdit && existingItem?.textureMap) {
+      const newUris = new Set();
+      if (textureMap) {
+        Object.values(textureMap).forEach(face => {
+          if (face?.uri && face.uri.startsWith('file://')) newUris.add(face.uri);
+        });
+      }
+      
+      for (const faceData of Object.values(existingItem.textureMap)) {
+        if (faceData?.uri && faceData.uri.startsWith('file://') && !newUris.has(faceData.uri)) {
+          try {
+            const file = new File(faceData.uri);
+            if (file.exists) file.delete();
+          } catch (e) {
+            console.warn('[ItemForm] Failed to delete replaced texture:', e);
+          }
+        }
+      }
+    }
 
     try {
       await saveItem(itemData);

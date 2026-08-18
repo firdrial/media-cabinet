@@ -359,6 +359,22 @@ export default function MediaScanScreen({ navigation, route }) {
     }
   };
 
+  // --- NEW HELPER FUNCTION FOR FILE CLEANUP ---
+  const cleanupCapturedImages = async (imagesObj) => {
+    if (!imagesObj) return;
+    for (const [faceKey, faceData] of Object.entries(imagesObj)) {
+      if (!faceData?.uri || !faceData.uri.startsWith('file://')) continue;
+      try {
+        const file = new File(faceData.uri);
+        if (file.exists) {
+          file.delete();
+        }
+      } catch (error) {
+        console.warn(`[MediaScan] Failed to cleanup scan "${faceKey}":`, error);
+      }
+    }
+  };
+
   const confirmCrop = async () => {
     try {
       const img = reviewRef.current;
@@ -479,6 +495,7 @@ export default function MediaScanScreen({ navigation, route }) {
     setCorners(null);
   };
 
+  // --- UPDATED EXIT SCAN TO CLEANUP DISCARDED FILES ---
   const exitScan = () => {
     Alert.alert(
       'Discard Scan?',
@@ -488,23 +505,43 @@ export default function MediaScanScreen({ navigation, route }) {
         {
           text: 'Discard',
           style: 'destructive',
-          onPress: () => navigation.goBack(),
+          onPress: async () => {
+            await cleanupCapturedImages(capturedImages);
+            navigation.goBack();
+          },
         }
       ]
     );
   };
 
-  const goBack = () => {
+  // --- UPDATED GO BACK TO CLEANUP SPECIFIC STEP OR ALL STEPS ---
+  const goBack = async () => {
     if (review) { retake(); return; }
     if (stepIndex > 0) {
       const newStep = stepIndex - 1;
       const stepKey = SCAN_STEPS[newStep].key;
       const updatedImages = { ...capturedImages };
+      
+      // Delete the file for the step we are discarding
+      const imageToDiscard = updatedImages[stepKey];
+      if (imageToDiscard?.uri && imageToDiscard.uri.startsWith('file://')) {
+        try {
+          const file = new File(imageToDiscard.uri);
+          if (file.exists) {
+            file.delete();
+          }
+        } catch (error) {
+          console.warn(`[MediaScan] Failed to delete step image on goBack:`, error);
+        }
+      }
+
       delete updatedImages[stepKey];
       setCapturedImages(updatedImages);
       setPrevStepKey(currentStep.key);
       setStepIndex(newStep);
     } else {
+      // If at step 0, going back discards the entire scan
+      await cleanupCapturedImages(capturedImages);
       navigation.goBack();
     }
   };

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, Alert, Image, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { File } from 'expo-file-system';
 import { deleteItem, saveItem } from './mediaStorage';
 import { useFocusEffect } from '@react-navigation/native';
 import Media3DPreview from './Media3DPreview';
@@ -49,10 +50,29 @@ export default function ItemDetailScreen({ route, navigation }) {
             const parsedMap = JSON.parse(pendingJSON);
             setCurrentItem(prev => {
               const updated = { ...prev, textureMap: parsedMap };
-              // If the scan captured a specific modelId, persist it to the item record
               if (parsedMap.modelId) {
                 updated.modelId = parsedMap.modelId;
               }
+
+              // --- NEW: Clean up old textures that were replaced ---
+              if (prev.textureMap) {
+                const newUris = new Set();
+                Object.values(parsedMap).forEach(face => {
+                  if (face?.uri && face.uri.startsWith('file://')) newUris.add(face.uri);
+                });
+                
+                for (const faceData of Object.values(prev.textureMap)) {
+                  if (faceData?.uri && faceData.uri.startsWith('file://') && !newUris.has(faceData.uri)) {
+                    try {
+                      const file = new File(faceData.uri);
+                      if (file.exists) file.delete();
+                    } catch (e) {
+                      console.warn('[ItemDetail] Failed to delete replaced texture:', e);
+                    }
+                  }
+                }
+              }
+
               saveItemToStorage(updated);
               return updated;
             });
