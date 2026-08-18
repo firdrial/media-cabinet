@@ -12,7 +12,7 @@ import {
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { File } from 'expo-file-system';
-import { saveItem, loadItems } from './mediaStorage';
+import { saveItem, loadItemsIndex } from './mediaStorage';
 import { useFocusEffect, usePreventRemove } from '@react-navigation/native';
 import { getFullMovieDetails } from './tmdbService';
 import { getFullAlbumDetails } from './musicService';
@@ -412,7 +412,7 @@ export default function ItemFormScreen({ route, navigation }) {
     }
 
     try {
-      const allItems = await loadItems();
+      const allItems = await loadItemsIndex();
       const targetCollectionId = collectionId || existingItem?.collectionId || null;
       
       const duplicate = allItems.find(item => {

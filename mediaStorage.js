@@ -6,6 +6,7 @@ import { File, Paths } from 'expo-file-system';
 // ---------------------------------------------------------
 const ITEM_IDS_KEY = 'media_cabinet_item_ids';
 const ITEM_KEY_PREFIX = 'media_cabinet_item_';
+const ITEM_INDEX_KEY = 'media_cabinet_item_index'; // Lightweight duplicate-check index
 const itemKey = id => `${ITEM_KEY_PREFIX}${id}`;
 
 // ---------------------------------------------------------
@@ -33,6 +34,66 @@ const parseJson = (value, fallback) => {
 const isCursorWindowError = error =>
   /Row too big to fit into CursorWindow/i.test(String(error?.message || error));
 
+/**
+ * Extracts only the lightweight fields needed for duplicate checking
+ * from a full item object.
+ */
+function extractIndexEntry(item) {
+  if (!item?.id) return null;
+  return {
+    id: item.id,
+    title: item.title || '',
+    year: item.year || '',
+    externalId: item.externalId || '',
+    tmdbId: item.tmdbId || '',
+    collectionId: item.collectionId || null,
+  };
+}
+
+/**
+ * Rebuilds the lightweight index from an array of full items.
+ * Used during migration or index repair.
+ */
+async function rebuildIndex(items) {
+  const index = items
+    .map(extractIndexEntry)
+    .filter(Boolean);
+  await AsyncStorage.setItem(ITEM_INDEX_KEY, JSON.stringify(index));
+}
+
+/**
+ * Updates a single entry in the lightweight index.
+ * If the item already exists in the index, it is replaced.
+ * If it doesn't exist, it is appended.
+ */
+async function upsertIndexEntry(item) {
+  const entry = extractIndexEntry(item);
+  if (!entry) return;
+
+  const indexValue = await AsyncStorage.getItem(ITEM_INDEX_KEY);
+  const index = parseJson(indexValue, []);
+
+  const existingPos = index.findIndex(e => e.id === entry.id);
+  if (existingPos >= 0) {
+    index[existingPos] = entry;
+  } else {
+    index.push(entry);
+  }
+
+  await AsyncStorage.setItem(ITEM_INDEX_KEY, JSON.stringify(index));
+}
+
+/**
+ * Removes a single entry from the lightweight index by ID.
+ */
+async function removeIndexEntry(id) {
+  const indexValue = await AsyncStorage.getItem(ITEM_INDEX_KEY);
+  const index = parseJson(indexValue, []);
+
+  const nextIndex = index.filter(e => e.id !== id);
+  await AsyncStorage.setItem(ITEM_INDEX_KEY, JSON.stringify(nextIndex));
+}
+
 // ---------------------------------------------------------
 // CORE FUNCTIONS
 // ---------------------------------------------------------
@@ -51,7 +112,21 @@ async function migrateLegacyData() {
   try {
     // STEP 1: Check if already migrated to the newest format
     const newIdsValue = await AsyncStorage.getItem(ITEM_IDS_KEY);
-    if (newIdsValue !== null) return; 
+    if (newIdsValue !== null) {
+      // Already migrated — ensure index exists
+      const indexValue = await AsyncStorage.getItem(ITEM_INDEX_KEY);
+      if (indexValue === null) {
+        const ids = parseJson(newIdsValue, []);
+        if (ids.length > 0) {
+          const records = await AsyncStorage.multiGet(ids.map(itemKey));
+          const items = records.map(([, v]) => parseJson(v, null)).filter(Boolean);
+          await rebuildIndex(items);
+        } else {
+          await AsyncStorage.setItem(ITEM_INDEX_KEY, JSON.stringify([]));
+        }
+      }
+      return;
+    }
 
     // STEP 2: Check for v2 split format ('vhs_tracker_tape_...')
     const splitIdsValue = await AsyncStorage.getItem(LEGACY_SPLIT_IDS_KEY);
@@ -77,12 +152,20 @@ async function migrateLegacyData() {
           [ITEM_IDS_KEY, JSON.stringify(splitIds)]
         ]);
 
+        // Build the lightweight index from migrated items
+        const migratedItems = oldRecords
+          .filter(([_, value]) => !!value)
+          .map(([_, value]) => parseJson(value, null))
+          .filter(Boolean);
+        await rebuildIndex(migratedItems);
+
         // Clean up old keys
         await AsyncStorage.multiRemove([...oldKeys, LEGACY_SPLIT_IDS_KEY]);
         console.info('Successfully migrated v2 split storage to media_cabinet format.');
       } else {
         // Empty v2 index, just create empty new index
         await AsyncStorage.setItem(ITEM_IDS_KEY, JSON.stringify([]));
+        await AsyncStorage.setItem(ITEM_INDEX_KEY, JSON.stringify([]));
         await AsyncStorage.removeItem(LEGACY_SPLIT_IDS_KEY);
       }
       return; 
@@ -95,6 +178,7 @@ async function migrateLegacyData() {
     if (!legacyValue || !Array.isArray(legacyItems) || legacyItems.length === 0) {
       // Nothing to migrate, initialize empty
       await AsyncStorage.setItem(ITEM_IDS_KEY, JSON.stringify([]));
+      await AsyncStorage.setItem(ITEM_INDEX_KEY, JSON.stringify([]));
       await AsyncStorage.removeItem(LEGACY_COLLECTION_KEY);
       return;
     }
@@ -105,6 +189,10 @@ async function migrateLegacyData() {
       ...legacyItems.map(item => [itemKey(item.id), JSON.stringify(item)]),
       [ITEM_IDS_KEY, JSON.stringify(ids)],
     ]);
+
+    // Build the lightweight index
+    await rebuildIndex(legacyItems);
+
     await AsyncStorage.removeItem(LEGACY_COLLECTION_KEY);
     console.info('Successfully migrated v1 single collection to media_cabinet format.');
 
@@ -113,7 +201,10 @@ async function migrateLegacyData() {
 
     // Cursor window error means the legacy single JSON is too big to read on Android.
     // We can't migrate what we can't read. Initialize clean so the app doesn't crash.
-    await AsyncStorage.multiSet([[ITEM_IDS_KEY, JSON.stringify([])]]);
+    await AsyncStorage.multiSet([
+      [ITEM_IDS_KEY, JSON.stringify([])],
+      [ITEM_INDEX_KEY, JSON.stringify([])],
+    ]);
     await AsyncStorage.removeItem(LEGACY_COLLECTION_KEY);
     console.warn(
       'Removed an unreadable legacy collection that exceeded Android\'s storage row limit.'
@@ -131,6 +222,27 @@ export async function loadItems() {
     .filter(Boolean);
 }
 
+/**
+ * Loads ONLY the lightweight metadata index for duplicate checking.
+ * This reads a single small AsyncStorage key (~50 bytes per item)
+ * instead of loading and parsing every full item record (~2KB+ each).
+ * 
+ * Returns an array of: { id, title, year, externalId, tmdbId, collectionId }
+ */
+export async function loadItemsIndex() {
+  // Ensure migration has run
+  await getItemIds();
+
+  const indexValue = await AsyncStorage.getItem(ITEM_INDEX_KEY);
+  if (indexValue === null) {
+    // Index doesn't exist yet — rebuild it from full items (one-time cost)
+    const items = await loadItems();
+    await rebuildIndex(items);
+    return items.map(extractIndexEntry).filter(Boolean);
+  }
+  return parseJson(indexValue, []);
+}
+
 export async function saveItem(item) {
   if (!item?.id) throw new Error('An item must have an id before it can be saved.');
 
@@ -140,6 +252,9 @@ export async function saveItem(item) {
     [itemKey(item.id), JSON.stringify(item)],
     [ITEM_IDS_KEY, JSON.stringify(nextIds)],
   ]);
+
+  // Keep the lightweight index in sync
+  await upsertIndexEntry(item);
 }
 
 /**
@@ -183,10 +298,13 @@ export async function deleteItem(id) {
     // Continue with deletion even if cleanup fails
   }
 
-  // Step 2: Remove from AsyncStorage (your existing logic)
+  // Step 2: Remove from AsyncStorage
   const ids = await getItemIds();
   await AsyncStorage.multiSet([
     [ITEM_IDS_KEY, JSON.stringify(ids.filter(itemId => itemId !== id))],
   ]);
   await AsyncStorage.removeItem(itemKey(id));
+
+  // Step 3: Remove from the lightweight index
+  await removeIndexEntry(id);
 }
