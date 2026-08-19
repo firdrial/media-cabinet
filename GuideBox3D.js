@@ -81,14 +81,15 @@ function makeMaterial(accentColor = DEFAULT_GUIDE_COLOR) {
   return new THREE.ShaderMaterial({
     side: THREE.FrontSide,
     transparent: true,
-    depthWrite: true,
+    depthWrite: false,  // Changed from true to false for better blending
+    blending: THREE.NormalBlending,  // Explicit normal blending
     uniforms: {
       uMap: { value: null },
       uHasMap: { value: 0 },
       uFacePx: { value: new THREE.Vector2(1, 1) },
       uBorderPx: { value: BORDER_PX },
       uColor: { value: new THREE.Color(accentColor) },
-      uFill: { value: 0.1 },
+      uFill: { value: 0.0 },  // Changed from 0.1 to 0.0 to remove empty fill tint
       uRadiusPx: { value: 0 },
     },
     vertexShader: VERT,
@@ -105,7 +106,11 @@ function TextureBinder({ url, material }) {
     texture.minFilter = THREE.LinearFilter;
     texture.magFilter = THREE.LinearFilter;
     texture.generateMipmaps = false;
-    texture.colorSpace = THREE.SRGBColorSpace;
+    // NOTE: Do NOT set texture.colorSpace = THREE.SRGBColorSpace here.
+    // With a custom ShaderMaterial the GPU would decode the texture to linear
+    // on sample, but this shader writes straight to the sRGB canvas without
+    // re-encoding, which makes captured photos render dark/tinted.
+    // Leaving the texture as raw sRGB bytes displays it exactly as captured.
     texture.needsUpdate = true;
     material.uniforms.uMap.value = texture;
     material.uniforms.uHasMap.value = 1;
