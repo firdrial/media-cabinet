@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Dimensions, ActivityIndicator, Image, PanResponder, Alert, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, Dimensions, ActivityIndicator, Image, PanResponder, Alert, StyleSheet, TouchableWithoutFeedback } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -17,6 +17,14 @@ const REFINE_AREA_H = SCREEN_HEIGHT * 0.62;
 const QW = (SCREEN_WIDTH - GRID_GAP) / 2;
 const QH = (REFINE_AREA_H - GRID_GAP) / 2;
 const ZOOM_LEVELS = [2, 5, 10];
+
+// expo-camera's zoom prop expects a value between 0 and 1 (percentage of max zoom)
+const CAMERA_ZOOM_LEVELS = [
+  { label: '1×', value: 0 },
+  { label: '2×', value: 0.3 },
+  { label: '3×', value: 0.6 },
+];
+const DEFAULT_CAMERA_ZOOM = 0.3; // Defaults to 2x
 
 function orderCorners(pts) {
   const sum = (p) => p.x + p.y;
@@ -128,12 +136,10 @@ export default function MediaScanScreen({ navigation, route }) {
   const SCAN_STEPS = useMemo(() => getScanSteps(modelId), [modelId]);
   const WARP_OUTPUT_SIZES = useMemo(() => getWarpOutputSizes(modelId), [modelId]);
   
-  // Calculate pixel radius for native masking (world units mm/100 -> pixels mm*10 => factor 1000)
   const cornerRadiusPx = useMemo(() => Math.round((model.cornerRadius || 0) * 1000), [model]);
 
   const [preferences, setPreferences] = useState({ theme: DEFAULT_THEME_ID });
 
-  // Load theme preferences
   useEffect(() => {
     const loadPrefs = async () => {
       try {
@@ -166,6 +172,10 @@ export default function MediaScanScreen({ navigation, route }) {
   const [review, setReview] = useState(null);
   const [corners, setCorners] = useState(null);
   const [zoom, setZoom] = useState(5);
+
+  // Camera zoom state (defaults to 2x)
+  const [cameraZoom, setCameraZoom] = useState(DEFAULT_CAMERA_ZOOM);
+  const [showZoomMenu, setShowZoomMenu] = useState(false);
 
   const reviewRef = useRef(null);
   const cornersRef = useRef(null);
@@ -267,6 +277,7 @@ export default function MediaScanScreen({ navigation, route }) {
     if (isCapturing || !cameraRef.current) return;
     setIsCapturing(true);
     setDetecting(true);
+    setShowZoomMenu(false); // Close zoom menu if open
 
     try {
       const measured = await measureGuideBox();
@@ -454,7 +465,7 @@ export default function MediaScanScreen({ navigation, route }) {
           outW,
           outH,
           false,
-          cornerRadiusPx // <-- Pass rounded corner radius to native module
+          cornerRadiusPx
         );
 
         if (warpResult?.uri) {
@@ -542,7 +553,6 @@ export default function MediaScanScreen({ navigation, route }) {
       const stepKey = SCAN_STEPS[newStep].key;
       const updatedImages = { ...capturedImages };
       
-      // Delete the file for the step we are discarding
       const imageToDiscard = updatedImages[stepKey];
       if (imageToDiscard?.uri && imageToDiscard.uri.startsWith('file://')) {
         try {
@@ -560,7 +570,6 @@ export default function MediaScanScreen({ navigation, route }) {
       setPrevStepKey(currentStep.key);
       setStepIndex(newStep);
     } else {
-      // If at step 0, going back discards the entire scan
       await cleanupCapturedImages(capturedImages);
       navigation.goBack();
     }
@@ -650,7 +659,7 @@ export default function MediaScanScreen({ navigation, route }) {
 
   return (
     <View style={styles.container}>
-      <CameraView style={StyleSheet.absoluteFill} ref={cameraRef} facing="back" />
+      <CameraView style={StyleSheet.absoluteFill} ref={cameraRef} facing="back" zoom={cameraZoom} />
 
       <View style={styles.overlay}>
         <View style={styles.header}>
@@ -685,14 +694,50 @@ export default function MediaScanScreen({ navigation, route }) {
           <Text style={styles.instructions}>{currentStep.instructions}</Text>
         </View>
 
+        {showZoomMenu && (
+          <TouchableWithoutFeedback onPress={() => setShowZoomMenu(false)}>
+            <View style={styles.zoomMenuBackdrop} />
+          </TouchableWithoutFeedback>
+        )}
+
         <View style={styles.controls}>
-          <TouchableOpacity
-            style={[styles.captureButton, isCapturing && styles.captureButtonDisabled]}
-            onPress={takePicture}
-            disabled={isCapturing}
-          >
-            <View style={styles.captureButtonInner} />
-          </TouchableOpacity>
+          {showZoomMenu && (
+            <View style={styles.zoomMenu}>
+              {CAMERA_ZOOM_LEVELS.map((z) => (
+                <TouchableOpacity
+                  key={z.label}
+                  style={[styles.zoomMenuOption, cameraZoom === z.value && styles.zoomMenuOptionActive]}
+                  onPress={() => {
+                    setCameraZoom(z.value);
+                    setShowZoomMenu(false);
+                  }}
+                >
+                  <Text style={[styles.zoomMenuText, cameraZoom === z.value && styles.zoomMenuTextActive]}>{z.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          <View style={styles.captureRow}>
+            <View style={styles.zoomTogglePlaceholder} />
+
+            <TouchableOpacity
+              style={[styles.captureButton, isCapturing && styles.captureButtonDisabled]}
+              onPress={takePicture}
+              disabled={isCapturing}
+            >
+              <View style={styles.captureButtonInner} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.zoomToggleButton, showZoomMenu && styles.zoomToggleButtonActive]}
+              onPress={() => setShowZoomMenu((v) => !v)}
+            >
+              <Text style={styles.zoomToggleText}>
+                {CAMERA_ZOOM_LEVELS.find(z => z.value === cameraZoom)?.label || `${cameraZoom}×`}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -706,7 +751,6 @@ export default function MediaScanScreen({ navigation, route }) {
 }
 
 const getStyles = (theme) => ({
-  // Kept #000 for camera/refine UI to ensure high contrast against camera feed and scanned images
   container: { flex: 1, backgroundColor: '#000' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.background },
   permissionText: { color: theme.textPrimary, fontSize: 16, marginBottom: 20, paddingHorizontal: 40, textAlign: 'center' },
@@ -724,6 +768,37 @@ const getStyles = (theme) => ({
   instructionsWrap: { alignItems: 'center', paddingVertical: 12 },
   instructions: { color: '#fff', fontSize: 14, textAlign: 'center', backgroundColor: 'rgba(0,0,0,0.6)', paddingVertical: 6, paddingHorizontal: 16, borderRadius: 20, overflow: 'hidden' },
   controls: { alignItems: 'center', paddingBottom: 40 },
+  captureRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16 },
+  zoomTogglePlaceholder: { width: 48, height: 48 },
+  zoomToggleButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#3a3a3a',
+    borderWidth: 1,
+    borderColor: '#555',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  zoomToggleButtonActive: { backgroundColor: theme.accent, borderColor: theme.accent },
+  zoomToggleText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  zoomMenuBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'transparent' },
+  zoomMenu: {
+    position: 'absolute',
+    right: 16,
+    bottom: 132,
+    flexDirection: 'column',
+    gap: 6,
+    padding: 6,
+    borderRadius: 26,
+    backgroundColor: 'rgba(30,30,30,0.95)',
+    zIndex: 30,
+    elevation: 30,
+  },
+  zoomMenuOption: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
+  zoomMenuOptionActive: { backgroundColor: theme.accent },
+  zoomMenuText: { color: '#ddd', fontSize: 14, fontWeight: '600' },
+  zoomMenuTextActive: { color: theme.onAccent },
   captureButton: { width: 80, height: 80, borderRadius: 40, borderWidth: 4, borderColor: '#fff', justifyContent: 'center', alignItems: 'center' },
   captureButtonDisabled: { opacity: 0.5 },
   captureButtonInner: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#fff' },
