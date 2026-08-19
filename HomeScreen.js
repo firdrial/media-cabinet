@@ -15,6 +15,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as LegacyFileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';   
 import { loadItems as loadStoredItems } from './mediaStorage';
 import { getTheme, DEFAULT_THEME_ID, THEME_OPTIONS } from './theme';
 
@@ -47,7 +49,7 @@ const getIconForType = (type) => {
     case 'VHS': return 'film';
     case 'DVD': return 'play-circle';
     case 'Blu-Ray': return 'videocam';
-    case 'LaserDisc': return 'tv'; // Updated capitalization
+    case 'LaserDisc': return 'tv'; 
     case 'Vinyl Record': return 'musical-notes';
     default: return 'folder';
   }
@@ -60,7 +62,6 @@ export default function HomeScreen({ navigation }) {
   const [collectionSearch, setCollectionSearch] = useState('');
   
   const [showAddMenu, setShowAddMenu] = useState(false);
-  const [showSortFilterMenu, setShowSortFilterMenu] = useState(false);
   const [showAddCollection, setShowAddCollection] = useState(false);
   const [showThemePicker, setShowThemePicker] = useState(false);
   
@@ -149,6 +150,68 @@ export default function HomeScreen({ navigation }) {
       }
     } catch (error) {
       console.error('Failed to load collections', error);
+    }
+  };
+
+  const handleExportData = async () => {
+    try {
+      // 1. Gather all metadata from AsyncStorage
+      const allKeys = await AsyncStorage.getAllKeys();
+      const itemKeys = allKeys.filter(k => k.startsWith('media_cabinet_item_'));
+
+      const [collectionsData, itemsData, prefsData] = await Promise.all([
+        AsyncStorage.getItem(COLLECTIONS_KEY),
+        AsyncStorage.multiGet(itemKeys),
+        AsyncStorage.getItem(PREFS_KEY)
+      ]);
+
+      // 2. Build the export payload
+      const exportPayload = {
+        version: '1.0',
+        exportedAt: new Date().toISOString(),
+        collections: collectionsData ? JSON.parse(collectionsData) : [],
+        items: itemsData.map(([key, value]) => JSON.parse(value)),
+        preferences: prefsData ? JSON.parse(prefsData) : DEFAULT_PREFERENCES
+      };
+
+      const jsonString = JSON.stringify(exportPayload, null, 2);
+      const fileName = `MediaCabinet_Backup_${new Date().toISOString().split('T')[0]}.json`;
+
+      // 3. Write directly to the root of the cache directory using the legacy API.
+      // Outlook and other strict apps sometimes reject nested cache folders 
+      // or the new SDK 54 File object URIs. The legacy cacheDirectory is universally accepted.
+      const fileUri = `${LegacyFileSystem.cacheDirectory}${fileName}`;
+      
+      await LegacyFileSystem.writeAsStringAsync(fileUri, jsonString, {
+        encoding: LegacyFileSystem.EncodingType.UTF8,
+      });
+
+      // 4. Open the native Android Share Sheet
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (!isAvailable) {
+        Alert.alert('Error', 'Sharing is not available on this device.');
+        return;
+      }
+
+      await Sharing.shareAsync(fileUri, {
+        mimeType: 'application/json',
+        dialogTitle: 'Save Media Cabinet Backup',
+      });
+
+      // 5. Clean up the temporary cache file
+      // On Android, the OS sometimes moves the file during sharing, so we wrap 
+      // this in a try/catch to prevent the app from crashing if it was already moved.
+      try {
+        await LegacyFileSystem.deleteAsync(fileUri, { idempotent: true });
+      } catch (deleteError) {
+        console.warn('File already removed by system:', deleteError.message);
+      }
+
+      Alert.alert('Export Successful', 'Backup process completed.');
+
+    } catch (error) {
+      console.error('Export failed:', error);
+      Alert.alert('Error', 'Failed to export data. Please try again.');
     }
   };
 
@@ -390,10 +453,10 @@ export default function HomeScreen({ navigation }) {
               <Ionicons name="color-palette-outline" size={24} color={theme.textPrimary} />
             </TouchableOpacity>
             <TouchableOpacity 
-              style={styles.sortFilterButton}
-              onPress={() => setShowSortFilterMenu(true)}
+              style={styles.exportButton}
+              onPress={handleExportData}
             >
-              <Ionicons name="options-outline" size={24} color={theme.textPrimary} />
+              <Ionicons name="cloud-upload-outline" size={24} color={theme.textPrimary} />
             </TouchableOpacity>
           </View>
         </View>
@@ -571,29 +634,6 @@ export default function HomeScreen({ navigation }) {
             </View>
           </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
-      </Modal>
-
-      {/* Sort & Filter Bottom Sheet Modal */}
-      <Modal
-        visible={showSortFilterMenu}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowSortFilterMenu(false)}
-      >
-        <TouchableWithoutFeedback onPress={() => setShowSortFilterMenu(false)}>
-          <View style={styles.modalBackdrop}>
-            <View style={styles.bottomSheetContainer}>
-              <View style={styles.sheetHandle} />
-              <Text style={styles.sheetTitle}>Sort & Filter</Text>
-              <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetScrollContent}>
-                <Text style={styles.emptyFilterText}>Sort and filter options apply to individual items within collections. (Collection-level sorting coming soon!)</Text>
-                <TouchableOpacity style={styles.sheetCancel} onPress={() => setShowSortFilterMenu(false)}>
-                  <Text style={styles.sheetCancelText}>Close</Text>
-                </TouchableOpacity>
-              </ScrollView>
-            </View>
-          </View>
-        </TouchableWithoutFeedback>
       </Modal>
 
       {/* Theme Picker Bottom Sheet Modal */}
@@ -789,7 +829,7 @@ const getStyles = (theme) => ({
     fontWeight: 'bold',
     color: theme.textPrimary
   },
-  sortFilterButton: {
+  exportButton: {
     padding: 8,
     backgroundColor: theme.chipBackground,
     borderRadius: 8,
@@ -874,12 +914,5 @@ const getStyles = (theme) => ({
     color: theme.onAccent,
     fontSize: 16,
     fontWeight: 'bold',
-  },
-  emptyFilterText: {
-    color: theme.textFaint,
-    fontSize: 14,
-    fontStyle: 'italic',
-    paddingVertical: 8,
-    textAlign: 'center',
   }
 });
