@@ -77,6 +77,12 @@ export default function ItemFormScreen({ route, navigation }) {
   const [caseType, setCaseType] = useState(initialCaseType);
   const [notes, setNotes] = useState(existingItem?.notes || '');
   
+  // Custom Dimensions State
+  const [customWidthMM, setCustomWidthMM] = useState(existingItem?.customDimsMM?.w?.toString() || '');
+  const [customHeightMM, setCustomHeightMM] = useState(existingItem?.customDimsMM?.h?.toString() || '');
+  const [customDepthMM, setCustomDepthMM] = useState(existingItem?.customDimsMM?.d?.toString() || '');
+  const [scanAllEdges, setScanAllEdges] = useState(existingItem?.scanAllEdges || false);
+
   const [externalId, setExternalId] = useState(existingItem?.externalId || existingItem?.tmdbId || '');
   const [apiSource, setApiSource] = useState(existingItem?.apiSource || '');
   const [coverArtUrl, setCoverArtUrl] = useState(() => {
@@ -369,6 +375,27 @@ export default function ItemFormScreen({ route, navigation }) {
       dateAdded: existingItem?.dateAdded || new Date().toISOString(), 
     };
 
+    // Inject custom dimensions if 'Custom' case type is selected
+    if (caseType === 'custom') {
+      const w = parseFloat(customWidthMM);
+      const h = parseFloat(customHeightMM);
+      const d = parseFloat(customDepthMM);
+      
+      const isVinylOrLaserDisc = format.toLowerCase().includes('vinyl') || format.toLowerCase().includes('laserdisc');
+      const requiresDepth = !isVinylOrLaserDisc || scanAllEdges;
+      
+      // Fallback to 5mm if depth is not required (Vinyl/LaserDisc standard thickness)
+      const finalDepth = requiresDepth ? d : 5; 
+      
+      if (!isNaN(w) && w > 0 && !isNaN(h) && h > 0 && (!requiresDepth || (!isNaN(d) && d > 0))) {
+        itemData.customDimsMM = { w, h, d: finalDepth };
+      }
+      
+      if (isVinylOrLaserDisc) {
+        itemData.scanAllEdges = scanAllEdges;
+      }
+    }
+
     // --- NEW: Clean up old textures that were replaced by the new scan ---
     if (isEdit && existingItem?.textureMap) {
       const newUris = new Set();
@@ -412,6 +439,28 @@ export default function ItemFormScreen({ route, navigation }) {
     if (!title) {
       Alert.alert('Oops', 'Please enter a title!');
       return;
+    }
+
+    // Validate custom dimensions
+    if (caseType === 'custom') {
+      const w = parseFloat(customWidthMM);
+      const h = parseFloat(customHeightMM);
+      
+      const isVinylOrLaserDisc = format.toLowerCase().includes('vinyl') || format.toLowerCase().includes('laserdisc');
+      const requiresDepth = !isVinylOrLaserDisc || scanAllEdges;
+      
+      if (isNaN(w) || w <= 0 || isNaN(h) || h <= 0) {
+        Alert.alert('Oops', 'Please enter valid custom Width and Height (must be greater than 0).');
+        return;
+      }
+
+      if (requiresDepth) {
+        const d = parseFloat(customDepthMM);
+        if (isNaN(d) || d <= 0) {
+          Alert.alert('Oops', 'Please enter a valid custom Depth (must be greater than 0).');
+          return;
+        }
+      }
     }
 
     try {
@@ -507,6 +556,8 @@ export default function ItemFormScreen({ route, navigation }) {
   };
 
   const currentCaseTypes = getCaseTypes(format);
+  const isVinylOrLaserDisc = format.toLowerCase().includes('vinyl') || format.toLowerCase().includes('laserdisc');
+  const showDepthInput = caseType === 'custom' && (!isVinylOrLaserDisc || scanAllEdges);
 
   return (
     <View style={styles.container}>
@@ -595,6 +646,67 @@ export default function ItemFormScreen({ route, navigation }) {
                 </TouchableOpacity>
               ))}
             </View>
+
+            {/* Custom Dimensions UI */}
+            {caseType === 'custom' && (
+              <>
+                <Text style={styles.label}>Custom Dimensions (mm)</Text>
+                <View style={styles.customDimsContainer}>
+                  <View style={styles.customDimInputWrapper}>
+                    <Text style={styles.customDimLabel}>Width</Text>
+                    <TextInput 
+                      style={styles.customDimInput} 
+                      keyboardType="numeric" 
+                      placeholder="mm" 
+                      placeholderTextColor={theme.placeholderText} 
+                      value={customWidthMM} 
+                      onChangeText={handleChange(setCustomWidthMM)} 
+                    />
+                  </View>
+                  <View style={styles.customDimInputWrapper}>
+                    <Text style={styles.customDimLabel}>Height</Text>
+                    <TextInput 
+                      style={styles.customDimInput} 
+                      keyboardType="numeric" 
+                      placeholder="mm" 
+                      placeholderTextColor={theme.placeholderText} 
+                      value={customHeightMM} 
+                      onChangeText={handleChange(setCustomHeightMM)} 
+                    />
+                  </View>
+                  {showDepthInput && (
+                    <View style={styles.customDimInputWrapper}>
+                      <Text style={styles.customDimLabel}>Depth</Text>
+                      <TextInput 
+                        style={styles.customDimInput} 
+                        keyboardType="numeric" 
+                        placeholder="mm" 
+                        placeholderTextColor={theme.placeholderText} 
+                        value={customDepthMM} 
+                        onChangeText={handleChange(setCustomDepthMM)} 
+                      />
+                    </View>
+                  )}
+                </View>
+
+                {/* Scan All Edges Toggle for Vinyl/LaserDisc */}
+                {isVinylOrLaserDisc && (
+                  <TouchableOpacity 
+                    style={styles.toggleRow}
+                    onPress={() => {
+                      setScanAllEdges(prev => !prev);
+                      setIsDirty(prev => prev ? prev : true);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.checkbox, scanAllEdges && styles.checkboxChecked]}>
+                      {scanAllEdges && <Ionicons name="checkmark" size={16} color={theme.onAccent} />}
+                    </View>
+                    <Text style={styles.toggleLabel}>Scan all edges</Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
           </>
         )}
 
@@ -693,11 +805,27 @@ export default function ItemFormScreen({ route, navigation }) {
 
         <TouchableOpacity 
           style={styles.scan3DButton} 
-          onPress={() => navigation.navigate('MediaScan', { returnTo: 'AddItem', modelId })}
+          onPress={() => {
+            const customData = caseType === 'custom' ? {
+              caseType: 'custom',
+              customDimsMM: {
+                w: parseFloat(customWidthMM) || 0,
+                h: parseFloat(customHeightMM) || 0,
+                d: parseFloat(customDepthMM) || 5
+              },
+              scanAllEdges
+            } : undefined;
+
+            navigation.navigate('MediaScan', { 
+              returnTo: 'AddItem', 
+              modelId, 
+              customData 
+            });
+          }}
         >
           <Ionicons name="cube-outline" size={24} color={theme.accent} />
           <Text style={styles.scan3DButtonText}>
-            {getScanLabel(modelId, !!textureMap)}
+            {getScanLabel(modelId, !!textureMap, { caseType })}
           </Text>
         </TouchableOpacity>
         
@@ -870,6 +998,55 @@ const getStyles = (theme) => ({
   },
   formatChipTextActive: {
     color: theme.accent,
+  },
+  customDimsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  customDimInputWrapper: {
+    flex: 1,
+    marginHorizontal: 4,
+  },
+  customDimLabel: {
+    fontSize: 12,
+    color: theme.textMuted,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  customDimInput: {
+    backgroundColor: theme.inputBackground,
+    borderColor: theme.inputBorder,
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: theme.inputText,
+    textAlign: 'center',
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: theme.inputBorder,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  checkboxChecked: {
+    backgroundColor: theme.accent,
+    borderColor: theme.accent,
+  },
+  toggleLabel: {
+    flex: 1,
+    fontSize: 14,
+    color: theme.textPrimary,
   },
   tracklistContainer: {
     backgroundColor: theme.cardBackground,

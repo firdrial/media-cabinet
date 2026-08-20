@@ -31,6 +31,7 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
  * ============================================================ */
 
 const PIXELS_PER_UNIT = 120;
+const SHELF_BASE_Y = -0.9; // The Y-coordinate (in world units) where the bottom of all items rest
 const H_VISIBLE_MARGIN = 1.0;
 const CAMERA_FOLLOW_SPEED = 16;
 const ANIMATION_SPEED = 0.06;
@@ -59,6 +60,18 @@ function getFaceWidth(model, orientation) {
   return orientation === 'cover' ? model.dims.w : model.dims.d;
 }
 
+function getEffectiveDims(item, model) {
+  const customData = item.customData || item.textureMap?.customData;
+  if (customData?.customDimsMM) {
+    return {
+      w: customData.customDimsMM.w / 100,
+      h: customData.customDimsMM.h / 100,
+      d: customData.customDimsMM.d / 100,
+    };
+  }
+  return model.dims;
+}
+
 /* ============================================================
  * UTILITIES
  * ============================================================ */
@@ -77,6 +90,7 @@ function clamp(value, min, max) {
 
 function ItemOnShelf({
   item,
+  customData,
   position,
   orientation,
   isFocused,
@@ -207,12 +221,15 @@ function ItemOnShelf({
     }
   });
 
+  const effectiveDims = getEffectiveDims(item, itemModel);
+
   return (
     <group ref={groupRef} position={position}>
       {renderFull || isFocused ? (
         <MediaItem3D 
           textureMap={item.textureMap} 
           modelId={itemModelId} 
+          customData={customData}
           bodyColor={bodyColor}
           placeholderColor={placeholderColor}
           missingColor={missingColor}
@@ -222,7 +239,7 @@ function ItemOnShelf({
         />
       ) : (
         <mesh>
-          <boxGeometry args={[itemModel.dims.w, itemModel.dims.h, itemModel.dims.d]} />
+          <boxGeometry args={[effectiveDims.w, effectiveDims.h, effectiveDims.d]} />
           <meshStandardMaterial color={placeholderColor} roughness={0.85} />
         </mesh>
       )}
@@ -303,12 +320,18 @@ function ShelfScene({
           || item.textureMap?.modelId 
           || resolveModelId(item.format, item.caseType);
         const itemModel = getModel(itemModelId);
+        const customData = item.customData || item.textureMap?.customData;
+        
+        const effDims = getEffectiveDims(item, itemModel);
+        // Calculate Y so the bottom of the item rests exactly on SHELF_BASE_Y
+        const wy = (effDims.h / 2) + SHELF_BASE_Y;
 
         return (
           <ItemOnShelf
             key={item.id}
             item={item}
-            position={[wx, 0, 0]}
+            customData={customData}
+            position={[wx, wy, 0]}
             orientation={orientation}
             isFocused={focusedId === item.id}
             focusedId={focusedId}
@@ -333,16 +356,24 @@ function ShelfScene({
  * ============================================================ */
 
 function ShelfHitTargets({ items, itemPositions, orientation, onFocus, contentWidth, model }) {
-  const itemHitHeight = model.dims.h * PIXELS_PER_UNIT;
-  const hitWidth = getFaceWidth(model, orientation) * PIXELS_PER_UNIT * HIT_TARGET_WIDTH_SCALE;
-
   return (
     <View style={{ width: contentWidth, height: SCREEN_HEIGHT }}>
       {items.map((item, itemIndex) => {
         const wx = itemPositions[itemIndex] || 0;
         const centerX = SCREEN_WIDTH / 2 + wx * PIXELS_PER_UNIT;
+        
+        const itemModelId = item.modelId || item.textureMap?.modelId || resolveModelId(item.format, item.caseType);
+        const itemModel = getModel(itemModelId);
+        const effDims = getEffectiveDims(item, itemModel);
+        
+        const itemHitHeight = effDims.h * PIXELS_PER_UNIT;
+        const hitWidth = (orientation === 'cover' ? effDims.w : effDims.d) * PIXELS_PER_UNIT * HIT_TARGET_WIDTH_SCALE;
+
         const left = centerX - hitWidth / 2;
-        const top = SCREEN_HEIGHT / 2 - itemHitHeight / 2;
+        
+        // Align the bottom of the 2D hit target with the 3D shelf base
+        const shelfBaseScreenY = (SCREEN_HEIGHT / 2) - (SHELF_BASE_Y * PIXELS_PER_UNIT);
+        const top = shelfBaseScreenY - itemHitHeight;
 
         return (
           <TouchableOpacity
@@ -436,12 +467,14 @@ export default function ShelfView3D({
       if (index < items.length - 1) {
         const currentId = item.modelId || item.textureMap?.modelId || resolveModelId(item.format, item.caseType);
         const currentModel = getModel(currentId);
-        const currentWidth = getFaceWidth(currentModel, activeOrientation);
+        const currentDims = getEffectiveDims(item, currentModel);
+        const currentWidth = activeOrientation === 'cover' ? currentDims.w : currentDims.d;
         
         const nextItem = items[index + 1];
         const nextId = nextItem.modelId || nextItem.textureMap?.modelId || resolveModelId(nextItem.format, nextItem.caseType);
         const nextModel = getModel(nextId);
-        const nextWidth = getFaceWidth(nextModel, activeOrientation);
+        const nextDims = getEffectiveDims(nextItem, nextModel);
+        const nextWidth = activeOrientation === 'cover' ? nextDims.w : nextDims.d;
         
         // Distance to next center = half of current + gap + half of next
         currentCenter += (currentWidth / 2) + uniformGap + (nextWidth / 2);

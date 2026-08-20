@@ -132,11 +132,29 @@ function CornerQuadrant({ uri, imgW, imgH, anchor, corners, scale, qIndex, respo
 
 export default function MediaScanScreen({ navigation, route }) {
   const modelId = route.params?.modelId || DEFAULT_MODEL_ID;
-  const model = useMemo(() => getModel(modelId), [modelId]);
-  const SCAN_STEPS = useMemo(() => getScanSteps(modelId), [modelId]);
-  const WARP_OUTPUT_SIZES = useMemo(() => getWarpOutputSizes(modelId), [modelId]);
   
-  const cornerRadiusPx = useMemo(() => Math.round((model.cornerRadius || 0) * 1000), [model]);
+  // FIX: Robustly extract and stabilize customData
+  const rawCustomData = route.params?.customData;
+  const customData = useMemo(() => {
+    if (!rawCustomData?.customDimsMM) return rawCustomData;
+    // Ensure dimensions are strictly valid numbers to prevent 0-width glitching in the 3D renderer
+    const safeDims = {
+      w: parseFloat(rawCustomData.customDimsMM.w) || 10,
+      h: parseFloat(rawCustomData.customDimsMM.h) || 10,
+      d: parseFloat(rawCustomData.customDimsMM.d) || 5
+    };
+    return { ...rawCustomData, customDimsMM: safeDims };
+  }, [rawCustomData]);
+
+  const model = useMemo(() => getModel(modelId), [modelId]);
+  const SCAN_STEPS = useMemo(() => getScanSteps(modelId, customData), [modelId, customData]);
+  const WARP_OUTPUT_SIZES = useMemo(() => getWarpOutputSizes(modelId, customData), [modelId, customData]);
+  
+  const cornerRadiusPx = useMemo(() => {
+    // Custom boxes typically don't have rounded corners unless explicitly defined
+    if (customData?.caseType === 'custom') return 0;
+    return Math.round((model.cornerRadius || 0) * 1000);
+  }, [model, customData]);
 
   const [preferences, setPreferences] = useState({ theme: DEFAULT_THEME_ID });
 
@@ -184,7 +202,7 @@ export default function MediaScanScreen({ navigation, route }) {
   const dragStart = useRef(null);
 
   const currentStep = SCAN_STEPS[stepIndex];
-  const ratio = currentStep.h / currentStep.w;
+  const ratio = currentStep.w > 0 && currentStep.h > 0 ? currentStep.h / currentStep.w : 1;
 
   const setCornersSafe = (next) => {
     cornersRef.current = next;
@@ -195,6 +213,10 @@ export default function MediaScanScreen({ navigation, route }) {
     const MAX_BOX_WIDTH = SCREEN_WIDTH * 0.85;
     const MAX_BOX_HEIGHT = SCREEN_HEIGHT * 0.65;
     const step = SCAN_STEPS[stepIndex];
+
+    if (!step || step.w === 0 || step.h === 0) {
+      return { width: MAX_BOX_WIDTH, height: MAX_BOX_HEIGHT };
+    }
 
     let boxWidth = MAX_BOX_WIDTH;
     let boxHeight = boxWidth * (step.h / step.w);
@@ -453,6 +475,14 @@ export default function MediaScanScreen({ navigation, route }) {
         y: Math.max(0, Math.min(1, (p.y - originY) / cropH)),
       }));
 
+      // If scanning a portrait-oriented edge (like Vinyl top/bottom), rotate the
+      // corner mapping 90 degrees so the warp outputs a landscape texture.
+      // FIX: Shift the opposite way around the quad so the warped texture lands
+      // right-side up (the previous direction produced upside-down output).
+      const finalCorners = currentStep.scanPortrait 
+        ? [cornersNorm[3], cornersNorm[0], cornersNorm[1], cornersNorm[2]] 
+        : cornersNorm;
+
       let textureUri = savedFile.uri;
       let isWarped = false;
 
@@ -461,7 +491,7 @@ export default function MediaScanScreen({ navigation, route }) {
         
         const warpResult = await warpQuad(
           savedFile.uri,
-          cornersNorm,
+          finalCorners, // Use rotated corners
           outW,
           outH,
           false,
@@ -486,12 +516,19 @@ export default function MediaScanScreen({ navigation, route }) {
         ...capturedImages,
         [currentStep.key]: {
           uri: textureUri,
-          corners: cornersNorm,
+          // Persist the (possibly rotated) corners so any fallback re-warp in the
+          // 3D viewer matches the corrected orientation.
+          corners: finalCorners,
           isWarped,
         },
       };
       
-      const finalTextureMap = { ...updatedImages, modelId };
+      // FIX: Persist customData reliably to the texture map
+      const finalTextureMap = { 
+        ...updatedImages, 
+        modelId, 
+        customData: customData || undefined 
+      }; 
 
       setCapturedImages(updatedImages);
 
@@ -512,6 +549,7 @@ export default function MediaScanScreen({ navigation, route }) {
             textureMap: finalTextureMap,
             title: 'My 3D Scan',
             modelId,
+            customData: customData || undefined,
           });
         }
       }
@@ -676,8 +714,12 @@ export default function MediaScanScreen({ navigation, route }) {
         </View>
 
         <View style={styles.guideContainer}>
+
+          {console.log('📤 [MediaScanScreen] Sending to GuideBox3D:', { stepKey: currentStep.key, customData, guideBox })}
+
           <GuideBox3D
             modelId={modelId}
+            customData={customData}
             stepKey={currentStep.key}
             fromKey={prevStepKey}
             captured={capturedImages}

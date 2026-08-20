@@ -12,12 +12,12 @@ const BORDER_PX = 3;
 const DEFAULT_GUIDE_COLOR = '#00a8ff';
 
 const POSES = {
-  front:  { rx: 0,              ry: 0 },
-  left:   { rx: 0,              ry: Math.PI / 2 },
-  back:   { rx: 0,              ry: Math.PI },
-  right:  { rx: 0,              ry: (3 * Math.PI) / 2 },
-  top:    { rx: Math.PI / 2,    ry: 2 * Math.PI },
-  bottom: { rx: -Math.PI / 2,   ry: 2 * Math.PI },
+  front:  { rx: 0,              ry: 0, rz: 0 },
+  left:   { rx: 0,              ry: Math.PI / 2, rz: 0 },
+  back:   { rx: 0,              ry: Math.PI, rz: 0 },
+  right:  { rx: 0,              ry: (3 * Math.PI) / 2, rz: 0 },
+  top:    { rx: Math.PI / 2,    ry: 2 * Math.PI, rz: 0 },
+  bottom: { rx: -Math.PI / 2,   ry: 2 * Math.PI, rz: 0 },
 };
 
 const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
@@ -135,12 +135,20 @@ function GuideFace({ config, material, url }) {
   );
 }
 
-function AnimatedBox({ stepKey, fromKey, captured, guideWidth, guideHeight, modelId = DEFAULT_MODEL_ID, accentColor }) {
+function AnimatedBox({ stepKey, fromKey, captured, guideWidth, guideHeight, modelId = DEFAULT_MODEL_ID, customData, accentColor }) {
   const group = useRef();
+  const rollRef = useRef(); // Outer group: screen-space roll, applied AFTER the pose
   const propsRef = useRef();
   propsRef.current = { stepKey, guideWidth, guideHeight };
 
-  const faceConfigs = useMemo(() => getFaceConfigs(modelId), [modelId]);
+  const faceConfigs = useMemo(() => getFaceConfigs(modelId, customData), [modelId, customData]);
+
+  console.log('📥 [GuideBox3D] Received:', { 
+    modelId, 
+    customData, 
+    faces: faceConfigs.map(f => ({ key: f.key, w: f.width?.toFixed(3), h: f.height?.toFixed(3) })) 
+  });
+
   const model = useMemo(() => getModel(modelId), [modelId]);
   
   const faceMap = useMemo(() => {
@@ -150,7 +158,9 @@ function AnimatedBox({ stepKey, fromKey, captured, guideWidth, guideHeight, mode
   }, [faceConfigs]);
 
   const initPose = POSES[fromKey] || POSES[stepKey];
-  const curRef = useRef({ rx: initPose.rx, ry: initPose.ry, s: 0 });
+  const initKey = fromKey || stepKey;
+  const initRz = faceMap[initKey]?.scanPortrait ? Math.PI / 2 : 0;
+  const curRef = useRef({ rx: initPose.rx, ry: initPose.ry, rz: initRz, s: 0 });
   const animRef = useRef(null);
 
   const materials = useMemo(() => {
@@ -171,9 +181,12 @@ function AnimatedBox({ stepKey, fromKey, captured, guideWidth, guideHeight, mode
 
   useEffect(() => {
     const to = POSES[stepKey];
+    const cfg = faceMap[stepKey];
+    const targetRz = cfg?.scanPortrait ? Math.PI / 2 : 0;
+
     animRef.current = {
-      fromRx: curRef.current.rx, fromRy: curRef.current.ry, fromS: curRef.current.s,
-      toRx: to.rx, toRy: to.ry, start: -1,
+      fromRx: curRef.current.rx, fromRy: curRef.current.ry, fromRz: curRef.current.rz, fromS: curRef.current.s,
+      toRx: to.rx, toRy: to.ry, toRz: targetRz, start: -1,
     };
   }, [stepKey]);
 
@@ -191,7 +204,14 @@ function AnimatedBox({ stepKey, fromKey, captured, guideWidth, guideHeight, mode
     // Safety check in case a model doesn't define this specific face key
     if (!cfg) return; 
     
-    const sTarget = Math.min(gw / (cfg.width * proj), gh / (cfg.height * proj));
+    // When the guide box is portrait (scanPortrait), the entire group is rolled 90 degrees 
+    // on screen. This means the physical width maps to the screen's height, and the 
+    // physical height maps to the screen's width. We must swap the effective dimensions 
+    // for the scale calculation so the rotated face perfectly fills the portrait anchor.
+    const effW = cfg.scanPortrait ? cfg.height : cfg.width;
+    const effH = cfg.scanPortrait ? cfg.width : cfg.height;
+
+    const sTarget = Math.min(gw / (effW * proj), gh / (effH * proj));
 
     const a = animRef.current;
     if (a) {
@@ -203,6 +223,7 @@ function AnimatedBox({ stepKey, fromKey, captured, guideWidth, guideHeight, mode
       const e = easeInOutCubic(t);
       curRef.current.rx = a.fromRx + (a.toRx - a.fromRx) * e;
       curRef.current.ry = a.fromRy + (a.toRy - a.fromRy) * e;
+      curRef.current.rz = a.fromRz + (a.toRz - a.fromRz) * e;
       curRef.current.s = a.fromS + (sTarget - a.fromS) * e;
       if (t >= 1) animRef.current = null;
     } else if (curRef.current.s) {
@@ -210,8 +231,20 @@ function AnimatedBox({ stepKey, fromKey, captured, guideWidth, guideHeight, mode
     }
     if (!curRef.current.s) curRef.current.s = sTarget;
 
+    // Inner group: pose (pitch/yaw) + uniform scale, exactly as before.
     group.current.rotation.set(curRef.current.rx, curRef.current.ry, 0);
     group.current.scale.setScalar(curRef.current.s);
+
+    // Outer group: screen-space roll applied AFTER the pose, in camera space.
+    // This presents portrait-scanned faces upright without rotating the wrong
+    // face toward the camera (the old single-group Euler composition bug).
+    if (rollRef.current) {
+      rollRef.current.rotation.set(0, 0, curRef.current.rz);
+    }
+
+    // Custom items typically have sharp corners unless explicitly specified otherwise
+    const isCustom = customData?.caseType === 'custom';
+    const baseCornerRadius = isCustom ? 0 : (model.cornerRadius || 0);
 
     faceConfigs.forEach((c) => {
       if (materials[c.key]) {
@@ -220,22 +253,24 @@ function AnimatedBox({ stepKey, fromKey, captured, guideWidth, guideHeight, mode
         materials[c.key].uniforms.uFacePx.value.set(scaledWidth, scaledHeight);
         
         // Dynamically scale the corner radius to match the current zoom/scale
-        const scaledRadius = (model.cornerRadius || 0) * curRef.current.s * proj;
+        const scaledRadius = baseCornerRadius * curRef.current.s * proj;
         materials[c.key].uniforms.uRadiusPx.value = scaledRadius;
       }
     });
   });
 
   return (
-    <group ref={group}>
-      {faceConfigs.map((cfg) => (
-        <GuideFace
-          key={cfg.key}
-          config={cfg}
-          material={materials[cfg.key]}
-          url={captured?.[cfg.key]?.isWarped ? captured[cfg.key].uri : null}
-        />
-      ))}
+    <group ref={rollRef}>
+      <group ref={group}>
+        {faceConfigs.map((cfg) => (
+          <GuideFace
+            key={cfg.key}
+            config={cfg}
+            material={materials[cfg.key]}
+            url={captured?.[cfg.key]?.isWarped ? captured[cfg.key].uri : null}
+          />
+        ))}
+      </group>
     </group>
   );
 }

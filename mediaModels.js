@@ -126,6 +126,31 @@ export const MEDIA_MODELS = {
   },
 
   /* ----------------------------------------------------------
+   * DVD — standard keep case (135 x 190 x 14 mm)
+   * ---------------------------------------------------------- */
+  dvd: {
+    id: 'dvd',
+    label: 'DVD Keep Case',
+    format: 'DVD',
+    category: MEDIA_CATEGORIES.FILM,
+    caseType: 'keep',
+    scanNoun: 'Keep Case',
+    dims: { w: 1.35, h: 1.90, d: 0.14 },
+    shelf: {
+      orientations: ['spine', 'cover'],
+      spacing: { spine: 0.17, cover: 1.42 },
+    },
+    faces: {
+      front:  { source: 'scan', label: 'Front Cover', guideNoun: 'FRONT cover',  out: [1350, 1900] },
+      left:   { source: 'scan', label: 'Left Spine',  guideNoun: 'LEFT SPINE',   out: [140, 1900] },
+      back:   { source: 'scan', label: 'Back Cover',  guideNoun: 'BACK cover',   out: [1350, 1900] },
+      right:  { source: 'scan', label: 'Right Spine', guideNoun: 'RIGHT SPINE',  out: [140, 1900] },
+      top:    { source: 'scan', label: 'Top Edge',    guideNoun: 'TOP EDGE',     out: [1350, 140] },
+      bottom: { source: 'scan', label: 'Bottom Edge', guideNoun: 'BOTTOM EDGE',  out: [1350, 140] },
+    },
+  },
+
+  /* ----------------------------------------------------------
    * Blu-Ray — standard keep case (~135 x 171 x 13 mm,
    * industry-standard values; verify against a physical case)
    * ---------------------------------------------------------- */
@@ -300,6 +325,7 @@ export const DEFAULT_MODEL_ID = 'vhs';
 const FORMAT_DEFAULT_MODEL = {
   VHS: 'vhs',
   CD: 'cd',
+  DVD: 'dvd',
   'Blu-Ray': 'bluray',
   Vinyl: 'vinyl',
   'Vinyl Record': 'vinyl',
@@ -316,6 +342,8 @@ export function getModel(modelId) {
 }
 
 export function resolveModelId(format, caseType) {
+  // Even if caseType is 'custom', we return the base model ID 
+  // so the app knows which face templates (labels, sources) to use.
   if (format === 'VHS' && caseType === 'double') return 'vhsDouble';
   if (format === 'Blu-Ray' && caseType === 'slipcover') return 'bluraySlipcover';
   return FORMAT_DEFAULT_MODEL[format] || DEFAULT_MODEL_ID;
@@ -323,19 +351,34 @@ export function resolveModelId(format, caseType) {
 
 /* Case-type choices per format (for the scan setup screen). */
 export function getCaseTypes(format) {
-  if (format === 'VHS') {
-    return [
-      { id: 'slipcase', label: 'Slipcase' },
-      { id: 'double', label: 'Double' },
-    ];
+  const customPill = { id: 'custom', label: 'Custom' };
+
+  switch (format) {
+    case 'VHS':
+      return [
+        { id: 'slipcase', label: 'Slipcase' },
+        { id: 'double', label: 'Double' },
+        customPill,
+      ];
+    case 'Blu-Ray':
+      return [
+        { id: 'keep', label: 'Keep Case' },
+        { id: 'slipcover', label: 'Slipcover' },
+        customPill,
+      ];
+    case 'DVD':
+      return [{ id: 'keep', label: 'Keep Case' }, customPill];
+    case 'CD':
+      return [{ id: 'jewel', label: 'Jewel Case' }, customPill];
+    case 'Vinyl':
+    case 'Vinyl Record':
+      return [{ id: 'jacket', label: 'Jacket' }, customPill];
+    case 'LaserDisc':
+    case 'Laser Disc':
+      return [{ id: 'jacket', label: 'Jacket' }, customPill];
+    default:
+      return [customPill]; // Fallback for any future formats
   }
-  if (format === 'Blu-Ray') {
-    return [
-      { id: 'keep', label: 'Keep Case' },
-      { id: 'slipcover', label: 'Slipcover' },
-    ];
-  }
-  return null; // single case type for other formats
 }
 
 /* Returns the media category (FILM, MUSIC, etc.) for a given model. */
@@ -344,20 +387,94 @@ export function getCategory(modelId) {
   return model.category || MEDIA_CATEGORIES.OTHER;
 }
 
-export function getScanLabel(modelId, isRescan) {
+export function getScanLabel(modelId, isRescan, customData) {
   const model = getModel(modelId);
-  const noun = model.scanNoun || 'Item';
+  let noun = model.scanNoun || 'Item';
+  if (customData?.caseType === 'custom') noun = 'Custom Item';
   return `${isRescan ? 'Rescan' : 'Scan'} ${noun}`;
 }
 
 /* ============================================================
+ * CUSTOM DIMENSIONS HELPER
+ * Intercepts the base model and recalculates dimensions and 
+ * pixel outputs if customData is provided.
+ * ============================================================ */
+
+const MAX_WARP_PX = 2048; // Same GPU-safe ceiling already used for vinyl
+
+/* Warp outputs are pixels = mm * 10, but the mobile GL/warp pipeline
+ * caps at 2048px. Scale down proportionally so the aspect ratio
+ * (and therefore the texture mapping) stays exact. */
+function cappedWarpOut(mmW, mmH) {
+  let outW = Math.round(mmW * 10);
+  let outH = Math.round(mmH * 10);
+  const largest = Math.max(outW, outH);
+  if (largest > MAX_WARP_PX) {
+    const scale = MAX_WARP_PX / largest;
+    outW = Math.round(outW * scale);
+    outH = Math.round(outH * scale);
+  }
+  return [outW, outH];
+}
+
+function getEffectiveConfig(modelId, customData) {
+  console.log('🔍 [mediaModels] getEffectiveConfig fired with:', customData);
+  const model = getModel(modelId);
+  let dims = model.dims;
+  let faces = { ...model.faces };
+  let cornerRadius = model.cornerRadius;
+
+  // If custom dimensions (in mm) are provided, override defaults
+  if (customData?.customDimsMM) {
+    const { w, h, d } = customData.customDimsMM;
+    // Convert mm to world units (mm / 100)
+    dims = { w: w / 100, h: h / 100, d: d / 100 };
+    
+    // Recalculate pixel outputs (mm * 10) for all faces
+    Object.keys(faces).forEach(key => {
+      const baseFace = faces[key];
+      const [mmW, mmH] = (key === 'front' || key === 'back') ? [w, h] : 
+                         (key === 'left' || key === 'right') ? [d, h] : 
+                         [w, d];
+      
+      faces[key] = { ...baseFace, out: cappedWarpOut(mmW, mmH) };
+    });
+  }
+
+  // Handle "Scan all edges" toggle for Vinyl/LaserDisc
+  if (customData?.scanAllEdges && (model.format === 'Vinyl' || model.format === 'LaserDisc')) {
+    // Map the generated keys to proper scanning nouns for the UI
+    const edgeGuideNouns = {
+      left: 'LEFT SPINE',
+      right: 'RIGHT SPINE',
+      top: 'TOP EDGE',
+      bottom: 'BOTTOM EDGE',
+    };
+    
+    ['left', 'right', 'top', 'bottom'].forEach(key => {
+      if (faces[key]) {
+        // Promote face to scannable and inject the missing guideNoun
+        faces[key] = { 
+          ...faces[key], 
+          source: 'scan', 
+          guideNoun: edgeGuideNouns[key] 
+        };
+      }
+    });
+  }
+
+  // Force portrait scan orientation for top/bottom Vinyl/LaserDisc to avoid razor-thin guide boxes
+  const isVinylOrLD = model.format === 'Vinyl' || model.format === 'LaserDisc';
+  if (isVinylOrLD) {
+      if (faces.top && faces.top.source === 'scan') faces.top.scanPortrait = true;
+      if (faces.bottom && faces.bottom.source === 'scan') faces.bottom.scanPortrait = true;
+  }
+
+  return { model, dims, faces, cornerRadius };
+}
+
+/* ============================================================
  * CAMERA FRAMING (Media3DViewer + ShelfView3D focus mode)
- *
- * Single source of truth for "how far back does the camera need
- * to be to frame this model nicely." Each model may optionally
- * set a `cameraFit` override (e.g. `{ marginFactor: 1.5 }`) to
- * hand-tune just that one type without touching the shared
- * default or any other model.
  * ============================================================ */
 
 const DEFAULT_CAMERA_FIT = {
@@ -371,30 +488,15 @@ export function getCameraFit(modelId) {
   return { ...DEFAULT_CAMERA_FIT, ...(model.cameraFit || {}) };
 }
 
-/**
- * Distance the camera needs to be from the object's center so its
- * front face (width x height) fits fully inside the camera's field of
- * view, given the viewport's aspect ratio (width / height).
- *
- * Depth is intentionally excluded: these are flat, card-like objects
- * viewed mostly face-on, so fitting the full 3D bounding sphere (as if
- * someone might view them edge-on) overshoots and makes everything
- * look smaller than necessary — most noticeably on wide/square formats
- * like vinyl, where it isn't needed at all.
- *
- * Whichever axis is tighter — height against the vertical FOV, or
- * width against the narrower horizontal FOV on a portrait screen —
- * determines the distance.
- */
-export function getCameraDistance(modelId, aspect) {
-  const model = getModel(modelId);
+export function getCameraDistance(modelId, aspect, customData) {
+  const { dims } = getEffectiveConfig(modelId, customData);
   const fit = getCameraFit(modelId);
 
   const vFov = (fit.fovDeg * Math.PI) / 180;
   const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
 
-  const distanceForHeight = model.dims.h / 2 / Math.tan(vFov / 2);
-  const distanceForWidth = model.dims.w / 2 / Math.tan(hFov / 2);
+  const distanceForHeight = dims.h / 2 / Math.tan(vFov / 2);
+  const distanceForWidth = dims.w / 2 / Math.tan(hFov / 2);
 
   const fitDistance = Math.max(distanceForHeight, distanceForWidth);
 
@@ -447,12 +549,13 @@ const FACE_POSITION_AXIS = {
   bottom: 'y',
 };
 
-export function getFaceConfigs(modelId) {
-  const model = getModel(modelId);
-  const { dims } = model;
+export function getFaceConfigs(modelId, customData) {
+  const { dims, faces } = getEffectiveConfig(modelId, customData);
 
   return FACE_CONFIG_ORDER.map(key => {
-    const face = model.faces[key];
+    const face = faces[key];
+    if (!face) return null;
+
     const [width, height] = faceSize(dims, key);
     const offset = faceOffset(dims, key);
     const axis = FACE_POSITION_AXIS[key];
@@ -472,8 +575,10 @@ export function getFaceConfigs(modelId) {
       position,
       rotation: FACE_ROTATIONS[key],
       roughness: DEFAULT_ROUGHNESS[key],
+      source: face.source, 
+      scanPortrait: !!face.scanPortrait, // Expose portrait flag to renderer
     };
-  });
+  }).filter(Boolean);
 }
 
 /* ----------------------------------------------------------
@@ -481,37 +586,44 @@ export function getFaceConfigs(modelId) {
  * and WARP_OUTPUT_SIZES, filtered to scannable faces only.
  * ---------------------------------------------------------- */
 
-export function getScanSteps(modelId) {
-  const model = getModel(modelId);
+export function getScanSteps(modelId, customData) {
+  const { dims, faces } = getEffectiveConfig(modelId, customData);
 
-  return SCAN_FACE_ORDER.filter(key => model.faces[key].source === 'scan').map(
+  return SCAN_FACE_ORDER.filter(key => faces[key]?.source === 'scan').map(
     key => {
-      const face = model.faces[key];
-      const [w, h] = faceSize(model.dims, key);
+      const face = faces[key];
+      let [w, h] = faceSize(dims, key);
+      
+      // If portrait scan is required, swap the dimensions for the guide box
+      if (face.scanPortrait) {
+        [w, h] = [h, w];
+      }
+
       return {
         key,
         label: face.label,
         w: Math.round(w * 100),
         h: Math.round(h * 100),
+        scanPortrait: !!face.scanPortrait,
         instructions: `Position the ${face.guideNoun} inside the blue box.`,
       };
     }
   );
 }
 
-export function getWarpOutputSizes(modelId) {
-  const model = getModel(modelId);
+export function getWarpOutputSizes(modelId, customData) {
+  const { faces } = getEffectiveConfig(modelId, customData);
   const sizes = {};
-  Object.keys(model.faces).forEach(key => {
-    sizes[key] = model.faces[key].out;
+  Object.keys(faces).forEach(key => {
+    sizes[key] = faces[key].out;
   });
   return sizes;
 }
 
-export function getGeneratedFaces(modelId) {
-  const model = getModel(modelId);
-  return Object.keys(model.faces).filter(
-    key => model.faces[key].source === 'generated'
+export function getGeneratedFaces(modelId, customData) {
+  const { faces } = getEffectiveConfig(modelId, customData);
+  return Object.keys(faces).filter(
+    key => faces[key].source === 'generated'
   );
 }
 
@@ -519,16 +631,18 @@ export function getGeneratedFaces(modelId) {
  * Shelf layout helpers (ShelfView3D)
  * ---------------------------------------------------------- */
 
-export function getSpacing(modelId, orientation) {
+export function getSpacing(modelId, orientation, customData) {
+  // Use standard spacing regardless of custom dimensions to prevent weird gaps
   const model = getModel(modelId);
   return model.shelf.spacing[orientation] ?? model.shelf.spacing.cover;
 }
 
-export function getFaceWidth(modelId, orientation) {
-  const { dims } = getModel(modelId);
+export function getFaceWidth(modelId, orientation, customData) {
+  // Must use custom dims if provided, so they don't overlap on the shelf
+  const { dims } = getEffectiveConfig(modelId, customData);
   return orientation === 'cover' ? dims.w : dims.d;
 }
 
-export function getShelfOrientations(modelId) {
+export function getShelfOrientations(modelId, customData) {
   return getModel(modelId).shelf.orientations;
 }

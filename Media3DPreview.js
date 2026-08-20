@@ -17,8 +17,17 @@ function PreviewLoader({ theme, styles }) {
   );
 }
 
-export default function Media3DPreview({ textureMap, modelId, title = '', style }) {
+export default function Media3DPreview({ 
+  textureMap, 
+  modelId, 
+  customData: propCustomData, 
+  title = '', 
+  style 
+}) {
   const [preferences, setPreferences] = useState({ theme: DEFAULT_THEME_ID });
+
+  // Extract customData from prop or from the textureMap itself
+  const customData = propCustomData || textureMap?.customData;
 
   // Load theme preferences
   useEffect(() => {
@@ -41,12 +50,22 @@ export default function Media3DPreview({ textureMap, modelId, title = '', style 
   const activeModelId = modelId || textureMap?.modelId || DEFAULT_MODEL_ID;
 
   // Dynamically adjust camera distance based on the model's largest dimension.
-  // e.g., Standard Media (1.87 tall) -> ~3.5 distance. Vinyl (3.14 tall) -> ~5.9 distance.
+  // Now correctly factors in custom dimensions if they exist.
   const cameraZ = useMemo(() => {
-    const dims = getModel(activeModelId).dims;
+    const model = getModel(activeModelId);
+    let dims = model.dims;
+    
+    if (customData?.customDimsMM) {
+      dims = {
+        w: customData.customDimsMM.w / 100,
+        h: customData.customDimsMM.h / 100,
+        d: customData.customDimsMM.d / 100,
+      };
+    }
+    
     const maxDim = Math.max(dims.w, dims.h, dims.d);
     return Math.max(3.5, maxDim * 1.87);
-  }, [activeModelId]);
+  }, [activeModelId, customData]);
 
   if (!textureMap) return null;
 
@@ -68,6 +87,7 @@ export default function Media3DPreview({ textureMap, modelId, title = '', style 
             <MediaItem3D 
               textureMap={textureMap} 
               modelId={activeModelId} 
+              customData={customData}
               bodyColor={theme.cardBackground}
               placeholderColor={theme.cardBackground}
               missingColor={theme.background}

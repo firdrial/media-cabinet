@@ -158,13 +158,15 @@ function getWarpedFaceUrl(face, config, cornerRadiusPx = 0) {
   return warpCache.get(cacheKey);
 }
 
-function ResolvedFaces({ textureMap, modelId, placeholderColor, missingColor }) {
-  const configs = useMemo(() => getFaceConfigs(modelId), [modelId]);
+function ResolvedFaces({ textureMap, modelId, placeholderColor, missingColor, customData }) {
+  const configs = useMemo(() => getFaceConfigs(modelId, customData), [modelId, customData]);
   const model = useMemo(() => getModel(modelId), [modelId]);
-  const hasRoundedCorners = !!(model.cornerRadius && model.cornerRadius > 0);
+  
+  const isCustom = customData?.caseType === 'custom';
+  const hasRoundedCorners = !isCustom && !!(model.cornerRadius && model.cornerRadius > 0);
   
   // Calculate pixel radius for native masking (world units mm/100 -> pixels mm*10 => factor 1000)
-  const cornerRadiusPx = Math.round((model.cornerRadius || 0) * 1000);
+  const cornerRadiusPx = isCustom ? 0 : Math.round((model.cornerRadius || 0) * 1000);
   
   const sourceKey = configs.map(config => textureSourceKey(textureMap?.[config.key])).join('::');
   const [faces, setFaces] = useState(null);
@@ -221,15 +223,17 @@ function ResolvedFaces({ textureMap, modelId, placeholderColor, missingColor }) 
  * `generated: { kind: 'spineLabel' }`. Uses Text3D to bypass 
  * React Native's lack of a DOM canvas.
  */
-function SpineLabels({ modelId, title, spineTextColor = '#ffffff' }) {
-  const configs = useMemo(() => getFaceConfigs(modelId), [modelId]);
+function SpineLabels({ modelId, title, spineTextColor = '#ffffff', customData }) {
+  const configs = useMemo(() => getFaceConfigs(modelId, customData), [modelId, customData]);
   const model = useMemo(() => getModel(modelId), [modelId]);
 
   if (!title || !model) return null;
 
   // Find only faces marked as spine labels in the registry
+  // FIX: Also ensure the face hasn't been promoted to 'scan' (e.g. via "scan all edges").
+  // If it's scanned, we don't want to render generated 3D text over the user's photo.
   const spineConfigs = configs.filter(
-    c => model.faces[c.key]?.generated?.kind === 'spineLabel'
+    c => c.source === 'generated' && model.faces[c.key]?.generated?.kind === 'spineLabel'
   );
 
   return spineConfigs.map(config => {
@@ -273,17 +277,30 @@ export function MediaItem3D({
   title = '',
   spineTextColor = '#ffffff',
   isFocused = true, // <--- Added for performance (defaults to true for standalone viewer)
+  customData,
 }) {
   const map = textureMap || EMPTY_TEXTURE_MAP;
   const model = getModel(modelId);
-  const dims = model.dims;
-  const cornerRadius = model.cornerRadius;
+  
+  const effectiveDims = useMemo(() => {
+    if (customData?.customDimsMM) {
+      return {
+        w: customData.customDimsMM.w / 100,
+        h: customData.customDimsMM.h / 100,
+        d: customData.customDimsMM.d / 100,
+      };
+    }
+    return model.dims;
+  }, [model, customData]);
+
+  const isCustom = customData?.caseType === 'custom';
+  const cornerRadius = isCustom ? 0 : model.cornerRadius;
 
   return (
     <group>
       {/* Solid physical body */}
       {cornerRadius ? (
-        <RoundedBox args={[dims.w, dims.h, dims.d]} radius={cornerRadius} smoothness={4}>
+        <RoundedBox args={[effectiveDims.w, effectiveDims.h, effectiveDims.d]} radius={cornerRadius} smoothness={4}>
           <meshStandardMaterial
             color={bodyColor}
             roughness={0.72}
@@ -293,7 +310,7 @@ export function MediaItem3D({
       ) : (
         <mesh>
           <boxGeometry
-            args={[dims.w, dims.h, dims.d]}
+            args={[effectiveDims.w, effectiveDims.h, effectiveDims.d]}
           />
           <meshStandardMaterial
             color={bodyColor}
@@ -308,11 +325,12 @@ export function MediaItem3D({
         modelId={modelId} 
         placeholderColor={placeholderColor}
         missingColor={missingColor}
+        customData={customData}
       />
 
       {/* ONLY render the heavy 3D text when the item is focused */}
       {isFocused && (
-        <SpineLabels modelId={modelId} title={title} spineTextColor={spineTextColor} />
+        <SpineLabels modelId={modelId} title={title} spineTextColor={spineTextColor} customData={customData} />
       )}
     </group>
   );
@@ -340,8 +358,12 @@ export default function Media3DViewer({
   textureMap,
   modelId = DEFAULT_MODEL_ID,
   title = '',
+  customData: propCustomData,
 }) {
   const [preferences, setPreferences] = useState({ theme: DEFAULT_THEME_ID });
+  
+  // Extract customData from prop or from the textureMap itself (where MediaScanScreen persists it)
+  const customData = propCustomData || textureMap?.customData;
 
   // Load theme preferences
   useEffect(() => {
@@ -361,14 +383,14 @@ export default function Media3DViewer({
 
   const cameraParams = useMemo(() => {
     const aspect = SCREEN_WIDTH / SCREEN_HEIGHT;
-    const z = getCameraDistance(modelId, aspect);
+    const z = getCameraDistance(modelId, aspect, customData);
 
     return {
       z,
       minDist: z * 0.5,
       maxDist: z * 2.5,
     };
-  }, [modelId]);
+  }, [modelId, customData]);
 
   return (
     <View style={styles.container}>
@@ -406,6 +428,7 @@ export default function Media3DViewer({
             missingColor={theme.background}
             title={title}
             spineTextColor={theme.accent} // <-- Pass theme color down
+            customData={customData}
           />
         </Suspense>
 
