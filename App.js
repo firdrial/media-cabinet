@@ -36,6 +36,7 @@ import SearchScreen from './SearchScreen';
 import ItemDetailScreen from './ItemDetailScreen';
 import Media3DViewerScreen from './Media3DViewerScreen';
 import MediaScanScreen from './MediaScanScreen';
+import TvReleaseSelectScreen from './TvReleaseSelectScreen'; // <-- ADDED
 import { getTheme, DEFAULT_THEME_ID } from './theme';
 
 const Stack = createNativeStackNavigator();
@@ -107,6 +108,12 @@ export default function App() {
         <Stack.Screen 
           name="MediaScan" 
           component={MediaScanScreen} 
+          options={{ headerShown: false }} 
+        />
+        {/* NEW: TV Release Selection Screen */}
+        <Stack.Screen 
+          name="TvReleaseSelect" 
+          component={TvReleaseSelectScreen} 
           options={{ headerShown: false }} 
         />
       </Stack.Navigator>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, FlatList, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { searchMovieByText } from './tmdbService';
+import { searchMovieByText, searchTvShowByText } from './tmdbService';
 import { searchAlbumByText } from './musicService';
 import { resolveModelId, getCategory, MEDIA_CATEGORIES } from './mediaModels';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -35,6 +35,9 @@ export default function SearchScreen({ route, navigation }) {
   const [results, setResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   
+  // NEW: State for toggling between Movie and TV search
+  const [searchType, setSearchType] = useState('movie'); 
+  
   const collectionId = route.params?.collectionId || null;
   const returnToCollection = route.params?.returnToCollection || false;
   
@@ -45,6 +48,9 @@ export default function SearchScreen({ route, navigation }) {
   const modelId = resolveModelId(primaryFormat);
   const category = getCategory(modelId);
   const isMusic = category === MEDIA_CATEGORIES.MUSIC;
+  
+  // NEW: Check if the current format is a visual format that supports both Movies and TV
+  const isVisualFormat = ['VHS', 'DVD', 'Blu-Ray', 'LaserDisc', 'Laser Disc'].includes(primaryFormat);
 
   const handleSearch = async () => {
     if (!query.trim()) return;
@@ -54,6 +60,8 @@ export default function SearchScreen({ route, navigation }) {
     let searchResults = [];
     if (isMusic) {
       searchResults = await searchAlbumByText(query);
+    } else if (isVisualFormat && searchType === 'tv') {
+      searchResults = await searchTvShowByText(query);
     } else {
       searchResults = await searchMovieByText(query);
     }
@@ -62,13 +70,23 @@ export default function SearchScreen({ route, navigation }) {
     setIsLoading(false);
   };
 
+  // UPDATED: Route TV shows to the season selector, others straight to AddItem
   const handleSelectItem = (item) => {
-    navigation.navigate('AddItem', { 
-      searchResult: item,
-      collectionId,
-      allowedFormats,
-      returnToCollection,
-    });
+    if (item.source === 'TMDB_TV') {
+      navigation.navigate('TvReleaseSelect', { 
+        searchResult: item,
+        collectionId,
+        allowedFormats,
+        returnToCollection,
+      });
+    } else {
+      navigation.navigate('AddItem', { 
+        searchResult: item,
+        collectionId,
+        allowedFormats,
+        returnToCollection,
+      });
+    }
   };
 
   const renderResult = ({ item }) => {
@@ -101,6 +119,19 @@ export default function SearchScreen({ route, navigation }) {
     );
   };
 
+  // Dynamic placeholder and text based on search type
+  const searchPlaceholder = isMusic 
+    ? "Search by album or artist..." 
+    : (searchType === 'tv' ? "Search by TV show title..." : "Search by movie title...");
+    
+  const loadingText = isMusic 
+    ? 'Searching Music...' 
+    : (searchType === 'tv' ? 'Searching TV Shows...' : 'Searching Movies...');
+    
+  const emptyTextBase = isMusic 
+    ? 'music' 
+    : (searchType === 'tv' ? 'TV show' : 'movie');
+
   return (
     <View style={styles.container}>
       <View style={styles.customHeader}>
@@ -123,10 +154,28 @@ export default function SearchScreen({ route, navigation }) {
         </View>
       )}
       
+      {/* NEW: Movie/TV Toggle (Only renders for visual formats) */}
+      {isVisualFormat && (
+        <View style={styles.searchTypeToggle}>
+          <TouchableOpacity 
+            onPress={() => setSearchType('movie')} 
+            style={[styles.toggleButton, searchType === 'movie' && styles.toggleButtonActive]}
+          >
+            <Text style={[styles.toggleText, searchType === 'movie' && styles.toggleTextActive]}>Movies</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            onPress={() => setSearchType('tv')} 
+            style={[styles.toggleButton, searchType === 'tv' && styles.toggleButtonActive]}
+          >
+            <Text style={[styles.toggleText, searchType === 'tv' && styles.toggleTextActive]}>TV Shows</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      
       <View style={styles.searchBar}>
         <TextInput
           style={styles.input}
-          placeholder={isMusic ? "Search by album or artist..." : "Search by title..."}
+          placeholder={searchPlaceholder}
           placeholderTextColor={theme.placeholderText}
           value={query}
           onChangeText={setQuery}
@@ -140,7 +189,7 @@ export default function SearchScreen({ route, navigation }) {
       {isLoading ? (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={theme.accent} />
-          <Text style={styles.loadingText}>Searching {isMusic ? 'Music' : 'Movies'}...</Text>
+          <Text style={styles.loadingText}>{loadingText}</Text>
         </View>
       ) : results.length > 0 ? (
         <FlatList
@@ -152,7 +201,7 @@ export default function SearchScreen({ route, navigation }) {
       ) : (
         <View style={styles.centered}>
           <Text style={styles.emptyText}>
-            {query.length > 0 ? 'No results found. Try a different title.' : `Type a ${isMusic ? 'music' : 'movie'} title above to search.`}
+            {query.length > 0 ? 'No results found. Try a different title.' : `Type a ${emptyTextBase} title above to search.`}
           </Text>
         </View>
       )}
@@ -196,6 +245,21 @@ const getStyles = (theme) => ({
     fontSize: 14,
     fontWeight: '600',
   },
+  // NEW: Toggle Styles
+  searchTypeToggle: { 
+    flexDirection: 'row', 
+    marginHorizontal: 15, 
+    marginTop: 10, 
+    marginBottom: 5, 
+    backgroundColor: theme.chipBackground, 
+    borderRadius: 8, 
+    padding: 4 
+  },
+  toggleButton: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 6 },
+  toggleButtonActive: { backgroundColor: theme.accentSoft },
+  toggleText: { color: theme.textMuted, fontWeight: '600', fontSize: 14 },
+  toggleTextActive: { color: theme.accent },
+  
   searchBar: { flexDirection: 'row', padding: 15, backgroundColor: theme.headerBackground, borderBottomWidth: 1, borderBottomColor: theme.headerBorder },
   input: { flex: 1, backgroundColor: theme.inputBackground, color: theme.inputText, padding: 12, borderRadius: 8, fontSize: 16, marginRight: 10 },
   searchButton: { backgroundColor: theme.accent, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20, borderRadius: 8 },

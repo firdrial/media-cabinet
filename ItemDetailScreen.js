@@ -15,6 +15,9 @@ export default function ItemDetailScreen({ route, navigation }) {
   const returnToCollection = route.params?.returnToCollection || false;
   const [currentItem, setCurrentItem] = useState(item);
   const [preferences, setPreferences] = useState({ theme: DEFAULT_THEME_ID });
+  
+  // State for collapsible TV seasons
+  const [expandedSeasons, setExpandedSeasons] = useState({});
 
   // Load theme preferences
   useEffect(() => {
@@ -55,7 +58,7 @@ export default function ItemDetailScreen({ route, navigation }) {
                 updated.modelId = parsedMap.modelId;
               }
 
-              // --- NEW: Clean up old textures that were replaced ---
+              // Clean up old textures that were replaced
               if (prev.textureMap) {
                 const newUris = new Set();
                 Object.values(parsedMap).forEach(face => {
@@ -75,7 +78,6 @@ export default function ItemDetailScreen({ route, navigation }) {
               }
 
               clearWarpCache();
-
               saveItemToStorage(updated);
               return updated;
             });
@@ -136,9 +138,78 @@ export default function ItemDetailScreen({ route, navigation }) {
     navigation.goBack();
   };
 
-  const renderTracklist = () => {
-    if (!isMusic || !currentItem.tracklist || currentItem.tracklist.length === 0) return null;
+  const toggleSeason = (season) => {
+    setExpandedSeasons(prev => ({
+      ...prev,
+      [season]: prev[season] === false ? true : false
+    }));
+  };
 
+  const renderTracklist = () => {
+    if (!currentItem.tracklist || currentItem.tracklist.length === 0) return null;
+
+    // Check if it's a TV tracklist (has 'season' property)
+    const isTvTracklist = currentItem.tracklist[0].season !== undefined;
+
+    if (isTvTracklist) {
+      const groupedBySeason = {};
+      currentItem.tracklist.forEach(ep => {
+        const s = ep.season !== undefined ? ep.season : 0;
+        if (!groupedBySeason[s]) groupedBySeason[s] = [];
+        groupedBySeason[s].push(ep);
+      });
+
+      const sortedSeasons = Object.keys(groupedBySeason).sort((a, b) => Number(a) - Number(b));
+
+      return (
+        <>
+          <Text style={styles.sectionLabel}>Episodes on this Release</Text>
+          <View style={styles.tracklistContainer}>
+            {sortedSeasons.map(season => {
+              const seasonName = season === '0' ? 'Specials' : `Season ${season}`;
+              const isExpanded = expandedSeasons[season] !== false; // Default to expanded
+
+              return (
+                <View key={season} style={styles.seasonGroup}>
+                  <TouchableOpacity 
+                    style={styles.seasonHeader} 
+                    onPress={() => toggleSeason(season)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.seasonHeaderText}>{seasonName} ({groupedBySeason[season].length} eps)</Text>
+                    <Ionicons 
+                      name={isExpanded ? "chevron-up" : "chevron-down"} 
+                      size={20} 
+                      color={theme.textMuted} 
+                    />
+                  </TouchableOpacity>
+                  
+                  {isExpanded && (
+                    <View style={styles.episodesList}>
+                      {groupedBySeason[season].map((ep, index) => (
+                        <View key={`${season}-${index}`} style={styles.trackRow}>
+                          <Text style={styles.trackPosition}>E{ep.position}</Text>
+                          <View style={styles.episodeTitleContainer}>
+                            <Text style={styles.trackTitle} numberOfLines={2}>{ep.title}</Text>
+                            {ep.air_date && ep.air_date !== 'Unknown' && (
+                              <Text style={styles.episodeAirDate}>{ep.air_date}</Text>
+                            )}
+                          </View>
+                          <Text style={styles.trackDuration}>{ep.duration || ''}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+          <View style={styles.divider} />
+        </>
+      );
+    }
+
+    // Existing music logic
     const currentStyle = currentItem.tracklistStyle || 'sequential';
 
     if (currentStyle === 'sides') {
@@ -198,6 +269,17 @@ export default function ItemDetailScreen({ route, navigation }) {
   // Support new coverArtUrl and legacy posterPath fallback
   const displayImage = currentItem.coverPhoto || currentItem.coverArtUrl || (currentItem.posterPath ? `https://image.tmdb.org/t/p/w500${currentItem.posterPath}` : null);
 
+  // Smart formatting for physical TV release info in the subtitle
+  const formatTvSeason = (season) => {
+    if (!season) return '';
+    const str = String(season).trim();
+    return /^\d+$/.test(str) ? `Season ${str}` : str;
+  };
+
+  const volumeInfoText = currentItem.volumeInfo ? ` • ${currentItem.volumeInfo}` : '';
+  const tvInfo = currentItem.tvSeason ? ` • ${formatTvSeason(currentItem.tvSeason)}` : '';
+  const epInfo = currentItem.episodeCount ? ` • ${currentItem.episodeCount} Episodes` : '';
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
       <View style={styles.header}>
@@ -213,7 +295,6 @@ export default function ItemDetailScreen({ route, navigation }) {
           <View style={styles.previewWrapper}>
             <Media3DPreview textureMap={currentItem.textureMap} modelId={activeModelId} style={{ width: '100%', height: 250 }} title={item.title} />
             
-            {/* Fullscreen Overlay Button (Bottom Right) */}
             <TouchableOpacity 
               style={styles.overlayButton} 
               onPress={() => navigation.navigate('Media3DViewer', { textureMap: currentItem.textureMap, title: currentItem.title, modelId: activeModelId })}
@@ -234,7 +315,6 @@ export default function ItemDetailScreen({ route, navigation }) {
                 <Ionicons name={isMusic ? "musical-notes-outline" : "videocam-outline"} size={64} color={theme.textMuted} />
               </View>
             )}
-            {/* Fallback button when no 3D scan exists yet */}
             <TouchableOpacity 
               style={styles.scan3DFallbackButton} 
               onPress={() => navigation.navigate('MediaScan', { returnTo: 'ItemDetail', modelId: activeModelId })}
@@ -247,7 +327,10 @@ export default function ItemDetailScreen({ route, navigation }) {
 
         <View style={styles.infoSection}>
           <Text style={styles.mainTitle}>{currentItem.title}</Text>
-          <Text style={styles.subTitle}>{currentItem.year} • {currentItem.format} • {currentItem.runtime || 'Unknown'}</Text>
+          
+          <Text style={styles.subTitle}>
+            {currentItem.year} • {currentItem.format}{volumeInfoText}{tvInfo}{epInfo} • {currentItem.runtime || 'Unknown'}
+          </Text>
           
           {currentItem.tagline ? (
             <Text style={styles.tagline}>
@@ -276,10 +359,20 @@ export default function ItemDetailScreen({ route, navigation }) {
           ) : null}
 
           <View style={styles.crewGrid}>
-            <DetailItem icon={isMusic ? "mic-outline" : "person-outline"} label={isMusic ? "Artist" : "Director"} value={currentItem.director || 'Unknown'} iconColor={theme.accent} styles={styles} />
+            <DetailItem icon={isMusic ? "mic-outline" : "person-outline"} label={isMusic ? "Artist" : "Director / Creator"} value={currentItem.director || 'Unknown'} iconColor={theme.accent} styles={styles} />
             <DetailItem icon="create-outline" label={isMusic ? "Producer / Writer" : "Writer"} value={currentItem.writer || 'Unknown'} iconColor={theme.accent} styles={styles} />
             <DetailItem icon="calendar-outline" label="Release Date" value={currentItem.releaseDate || 'Unknown'} iconColor={theme.accent} styles={styles} />
             <DetailItem icon={isMusic ? "disc-outline" : "business-outline"} label={isMusic ? "Label" : "Distributor"} value={currentItem.distributor || 'Unknown'} iconColor={theme.accent} styles={styles} />
+            
+            {!isMusic && (currentItem.tvSeason || currentItem.episodeCount) && (
+              <DetailItem 
+                icon="layers-outline" 
+                label="Release Contents" 
+                value={`${currentItem.tvSeason ? String(currentItem.tvSeason).trim() : ''}${currentItem.episodeCount ? ` (${currentItem.episodeCount} eps)` : ''}`.trim()} 
+                iconColor={theme.accent} 
+                styles={styles} 
+              />
+            )}
           </View>
 
           <View style={styles.divider} />
@@ -405,9 +498,9 @@ const getStyles = (theme) => ({
   },
 
   coverImage: { width: 180, height: 270, borderRadius: 12, marginBottom: 20, backgroundColor: theme.chipBackground },
-  coverImageMusic: { width: 270, height: 270 }, // Square for albums
+  coverImageMusic: { width: 270, height: 270 },
   coverPlaceholder: { width: 180, height: 270, borderRadius: 12, marginBottom: 20, backgroundColor: theme.chipBackground, justifyContent: 'center', alignItems: 'center' },
-  coverPlaceholderMusic: { width: 270, height: 270 }, // Square for albums
+  coverPlaceholderMusic: { width: 270, height: 270 },
   infoSection: { width: '100%', backgroundColor: theme.cardBackground, borderRadius: 12, padding: 20, borderWidth: 1, borderColor: theme.cardBorder },
   mainTitle: { fontSize: 24, fontWeight: 'bold', color: theme.titleText, textAlign: 'center', marginBottom: 4 },
   subTitle: { fontSize: 15, color: theme.textSecondary, textAlign: 'center', marginBottom: 12 },
@@ -469,5 +562,37 @@ const getStyles = (theme) => ({
   actionButton: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 16, borderRadius: 12, gap: 8 },
   editButton: { backgroundColor: theme.chipBackground, borderWidth: 1, borderColor: theme.sheetBorder },
   deleteButton: { backgroundColor: theme.accent },
-  actionButtonText: { fontSize: 16, fontWeight: 'bold' }
+  actionButtonText: { fontSize: 16, fontWeight: 'bold' },
+  
+  // Collapsible TV Season Styles
+  seasonGroup: {
+    marginBottom: 12,
+  },
+  seasonHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: theme.chipBackground,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  seasonHeaderText: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: theme.accent,
+  },
+  episodesList: {
+    paddingLeft: 8,
+  },
+  episodeTitleContainer: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  episodeAirDate: {
+    fontSize: 12,
+    color: theme.textMuted,
+    marginTop: 2,
+  },
 });

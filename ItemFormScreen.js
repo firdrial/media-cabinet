@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { 
   View, 
   Text, 
@@ -7,7 +7,8 @@ import {
   Alert, 
   Image,
   Modal,
-  TouchableWithoutFeedback
+  TouchableWithoutFeedback,
+  FlatList
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -15,7 +16,13 @@ import { File } from 'expo-file-system';
 import { saveItem, loadItemsIndex } from './mediaStorage';
 import { clearWarpCache } from './Media3DViewer';
 import { useFocusEffect, usePreventRemove } from '@react-navigation/native';
-import { getFullMovieDetails } from './tmdbService';
+import { 
+  getFullMovieDetails, 
+  getFullTvShowDetails, 
+  getTvSeasonEpisodes, 
+  getAllTvEpisodes,
+  getTvSeasonsList
+} from './tmdbService';
 import { getFullAlbumDetails } from './musicService';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -62,7 +69,6 @@ export default function ItemFormScreen({ route, navigation }) {
   const theme = getTheme(preferences.theme);
   const styles = getStyles(theme);
 
-  // FIX: Dynamically determine initial caseType based on the initial format's default model
   const initialFormat = existingItem?.format || (allowedFormats ? allowedFormats[0] : 'VHS');
   const initialCaseTypes = getCaseTypes(initialFormat);
   const initialCaseType = existingItem?.caseType || (
@@ -77,7 +83,6 @@ export default function ItemFormScreen({ route, navigation }) {
   const [caseType, setCaseType] = useState(initialCaseType);
   const [notes, setNotes] = useState(existingItem?.notes || '');
   
-  // Custom Dimensions State
   const [customWidthMM, setCustomWidthMM] = useState(existingItem?.customDimsMM?.w?.toString() || '');
   const [customHeightMM, setCustomHeightMM] = useState(existingItem?.customDimsMM?.h?.toString() || '');
   const [customDepthMM, setCustomDepthMM] = useState(existingItem?.customDimsMM?.d?.toString() || '');
@@ -107,6 +112,16 @@ export default function ItemFormScreen({ route, navigation }) {
   const [productionCompanies, setProductionCompanies] = useState(existingItem?.productionCompanies ? existingItem.productionCompanies.join(', ') : '');
   const [director, setDirector] = useState(existingItem?.director || '');
   const [writer, setWriter] = useState(existingItem?.writer || '');
+
+  // Physical TV Release specific state
+  const [tvSeason, setTvSeason] = useState(existingItem?.tvSeason || '');
+  const [episodeCount, setEpisodeCount] = useState(existingItem?.episodeCount?.toString() || '');
+  const [volumeInfo, setVolumeInfo] = useState(existingItem?.volumeInfo || '');
+  
+  // Episode selection state
+  const [availableEpisodes, setAvailableEpisodes] = useState([]);
+  const [showEpisodeSelector, setShowEpisodeSelector] = useState(false);
+  const [tempSelectedEpisodes, setTempSelectedEpisodes] = useState(existingItem?.tracklist || []);
 
   const [tracklist, setTracklist] = useState(existingItem?.tracklist || []);
   const [tracklistStyle, setTracklistStyle] = useState(existingItem?.tracklistStyle || '');
@@ -154,7 +169,6 @@ export default function ItemFormScreen({ route, navigation }) {
           text: 'Discard',
           style: 'destructive',
           onPress: async () => {
-            // --- NEW: Clean up newly scanned textures that are being discarded ---
             if (textureMap) {
               const oldUris = new Set();
               if (isEdit && existingItem?.textureMap) {
@@ -183,6 +197,41 @@ export default function ItemFormScreen({ route, navigation }) {
     );
   });
 
+  // Helper to calculate total runtime from an array of episodes
+  const calculateTotalRuntime = (episodes) => {
+    let totalMinutes = 0;
+    episodes.forEach(ep => {
+      if (ep.duration) {
+        const match = String(ep.duration).match(/(\d+)/);
+        if (match) {
+          totalMinutes += parseInt(match[1], 10);
+        }
+      }
+    });
+    if (totalMinutes === 0) return '';
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+    if (hours > 0) {
+      return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+    }
+    return `${totalMinutes} min`;
+  };
+
+  // Group episodes by season for the modal UI
+  const episodesBySeason = useMemo(() => {
+    const groups = {};
+    availableEpisodes.forEach(ep => {
+      const s = ep.season !== undefined ? ep.season : 0;
+      if (!groups[s]) groups[s] = [];
+      groups[s].push(ep);
+    });
+    return groups;
+  }, [availableEpisodes]);
+
+  const sortedSeasons = useMemo(() => {
+    return Object.keys(episodesBySeason).sort((a, b) => Number(a) - Number(b));
+  }, [episodesBySeason]);
+
   useEffect(() => {
     const fetchData = async () => {
       if (isEdit) return;
@@ -197,14 +246,50 @@ export default function ItemFormScreen({ route, navigation }) {
         setCoverArtUrl(result.coverArtUrl || null);
         
         let details = null;
+        let calculatedRuntime = ''; // Track calculated runtime locally to prevent overwrite
+        let fetchedSeasonCoverArtUrl = null;
+
         if (result.source === 'TMDB') {
           details = await getFullMovieDetails(result.id);
+        } else if (result.source === 'TMDB_TV') {
+          details = await getFullTvShowDetails(result.id);
+          
+          if (result.selectedSeason === 'complete') {
+            const seasonsList = await getTvSeasonsList(result.id);
+            const allEps = await getAllTvEpisodes(result.id, seasonsList);
+            setAvailableEpisodes(allEps);
+            setTvSeason('Complete Series');
+            
+            setTracklist(allEps);
+            setTempSelectedEpisodes(allEps);
+            setEpisodeCount(allEps.length.toString());
+            calculatedRuntime = calculateTotalRuntime(allEps);
+            setRuntime(calculatedRuntime);
+            
+          } else if (result.selectedSeason !== undefined) {
+            const seasonData = await getTvSeasonEpisodes(result.id, result.selectedSeason);
+            const eps = seasonData.episodes || seasonData; 
+            
+            setAvailableEpisodes(eps);
+            setTvSeason(result.selectedSeason === 0 ? 'Specials' : `Season ${result.selectedSeason}`);
+            
+            fetchedSeasonCoverArtUrl = seasonData.seasonCoverArtUrl;
+            if (fetchedSeasonCoverArtUrl) {
+              setCoverArtUrl(fetchedSeasonCoverArtUrl);
+            }
+
+            setTracklist(eps);
+            setTempSelectedEpisodes(eps);
+            setEpisodeCount(eps.length.toString());
+            calculatedRuntime = calculateTotalRuntime(eps);
+            setRuntime(calculatedRuntime);
+          }
         } else if (result.source === 'Discogs' || result.source === 'Spotify') {
           details = await getFullAlbumDetails(result.id);
         }
         
         if (details) {
-          if (details.coverArtUrl) {
+          if (details.coverArtUrl && !fetchedSeasonCoverArtUrl) {
             setCoverArtUrl(details.coverArtUrl);
           }
           
@@ -213,7 +298,12 @@ export default function ItemFormScreen({ route, navigation }) {
           }
 
           setReleaseDate(details.releaseDate);
-          setRuntime(details.runtime);
+          
+          // Only set runtime from details if we didn't just calculate it from episodes
+          if (!calculatedRuntime) {
+            setRuntime(details.runtime);
+          }
+          
           setDistributor(details.distributor);
           setTagline(details.tagline);
           setOverview(details.overview);
@@ -340,6 +430,37 @@ export default function ItemFormScreen({ route, navigation }) {
     setIsDirty(prev => prev ? prev : true);
   };
 
+  // Episode selection handlers
+  const handleOpenEpisodeSelector = () => {
+    setTempSelectedEpisodes([...tracklist]);
+    setShowEpisodeSelector(true);
+  };
+
+  const handleToggleEpisode = (episode) => {
+    const isSelected = tempSelectedEpisodes.find(
+      ep => ep.position === episode.position && ep.season === episode.season
+    );
+    if (isSelected) {
+      setTempSelectedEpisodes(tempSelectedEpisodes.filter(
+        ep => ep.position !== episode.position || ep.season !== episode.season
+      ));
+    } else {
+      setTempSelectedEpisodes([...tempSelectedEpisodes, episode]);
+    }
+  };
+
+  const handleSaveEpisodes = () => {
+    const sorted = [...tempSelectedEpisodes].sort((a, b) => {
+      if (a.season !== b.season) return a.season - b.season;
+      return parseInt(a.position) - parseInt(b.position);
+    });
+    setTracklist(sorted);
+    setEpisodeCount(sorted.length.toString());
+    setRuntime(calculateTotalRuntime(sorted)); // Auto-calculate runtime based on selection
+    setShowEpisodeSelector(false);
+    setIsDirty(prev => prev ? prev : true);
+  };
+
   const performSave = async () => {
     const itemData = {
       id: existingItem?.id || Date.now().toString(),
@@ -372,10 +493,13 @@ export default function ItemFormScreen({ route, navigation }) {
       tracklistStyle: tracklistStyle || getModel(modelId).tracklistStyle,
       mediaFormats,
       country,
+      // Physical TV Release fields
+      tvSeason,
+      episodeCount: episodeCount ? parseInt(episodeCount, 10) : null,
+      volumeInfo,
       dateAdded: existingItem?.dateAdded || new Date().toISOString(), 
     };
 
-    // Inject custom dimensions if 'Custom' case type is selected
     if (caseType === 'custom') {
       const w = parseFloat(customWidthMM);
       const h = parseFloat(customHeightMM);
@@ -384,7 +508,6 @@ export default function ItemFormScreen({ route, navigation }) {
       const isVinylOrLaserDisc = format.toLowerCase().includes('vinyl') || format.toLowerCase().includes('laserdisc');
       const requiresDepth = !isVinylOrLaserDisc || scanAllEdges;
       
-      // Fallback to 5mm if depth is not required (Vinyl/LaserDisc standard thickness)
       const finalDepth = requiresDepth ? d : 5; 
       
       if (!isNaN(w) && w > 0 && !isNaN(h) && h > 0 && (!requiresDepth || (!isNaN(d) && d > 0))) {
@@ -396,7 +519,6 @@ export default function ItemFormScreen({ route, navigation }) {
       }
     }
 
-    // --- NEW: Clean up old textures that were replaced by the new scan ---
     if (isEdit && existingItem?.textureMap) {
       const newUris = new Set();
       if (textureMap) {
@@ -441,7 +563,6 @@ export default function ItemFormScreen({ route, navigation }) {
       return;
     }
 
-    // Validate custom dimensions
     if (caseType === 'custom') {
       const w = parseFloat(customWidthMM);
       const h = parseFloat(customHeightMM);
@@ -500,8 +621,45 @@ export default function ItemFormScreen({ route, navigation }) {
   };
 
   const renderTracklist = () => {
-    if (!isMusic || tracklist.length === 0) return null;
+    if (tracklist.length === 0) return null;
 
+    // Check if it's TV episodes (they have a 'season' property)
+    const isTvTracklist = tracklist[0].season !== undefined;
+
+    if (isTvTracklist) {
+      const groupedBySeason = {};
+      tracklist.forEach(ep => {
+        const s = ep.season !== undefined ? ep.season : 0;
+        if (!groupedBySeason[s]) groupedBySeason[s] = [];
+        groupedBySeason[s].push(ep);
+      });
+
+      return (
+        <>
+          <Text style={styles.sectionHeader}>Episodes on this Release</Text>
+          <View style={styles.tracklistContainer}>
+            {Object.keys(groupedBySeason).sort((a,b) => Number(a) - Number(b)).map(season => {
+              const seasonName = season === '0' ? 'Specials' : `Season ${season}`;
+              return (
+                <View key={season}>
+                  <Text style={styles.sideHeader}>{seasonName}</Text>
+                  {groupedBySeason[season].map((ep, index) => (
+                    <View key={`${season}-${index}`} style={styles.trackRow}>
+                      <Text style={styles.trackPosition}>E{ep.position}</Text>
+                      <Text style={styles.trackTitle} numberOfLines={2}>{ep.title}</Text>
+                      <Text style={styles.trackDuration}>{ep.duration || ''}</Text>
+                    </View>
+                  ))}
+                </View>
+              );
+            })}
+          </View>
+          <View style={styles.divider} />
+        </>
+      );
+    }
+
+    // Existing music logic
     const currentStyle = tracklistStyle || getModel(modelId).tracklistStyle || 'sequential';
 
     if (currentStyle === 'sides') {
@@ -647,7 +805,6 @@ export default function ItemFormScreen({ route, navigation }) {
               ))}
             </View>
 
-            {/* Custom Dimensions UI */}
             {caseType === 'custom' && (
               <>
                 <Text style={styles.label}>Custom Dimensions (mm)</Text>
@@ -689,7 +846,6 @@ export default function ItemFormScreen({ route, navigation }) {
                   )}
                 </View>
 
-                {/* Scan All Edges Toggle for Vinyl/LaserDisc */}
                 {isVinylOrLaserDisc && (
                   <TouchableOpacity 
                     style={styles.toggleRow}
@@ -720,6 +876,55 @@ export default function ItemFormScreen({ route, navigation }) {
         <Text style={styles.label}>Release Date</Text>
         <TextInput style={styles.input} placeholder="e.g., 1999-10-15" placeholderTextColor={theme.placeholderText} value={releaseDate} onChangeText={handleChange(setReleaseDate)} />
 
+        {/* Physical TV Release Fields */}
+        {(apiSource === 'TMDB_TV' || tvSeason || episodeCount || volumeInfo) && (
+          <>
+            <Text style={styles.sectionHeader}>Physical Release Info</Text>
+            
+            <Text style={styles.label}>Volume / Part (Optional)</Text>
+            <TextInput 
+              style={styles.input} 
+              placeholder="e.g., Tape 1 of 4, Disc 2" 
+              placeholderTextColor={theme.placeholderText} 
+              value={volumeInfo} 
+              onChangeText={handleChange(setVolumeInfo)} 
+            />
+
+            <View style={styles.customDimsContainer}>
+              <View style={styles.customDimInputWrapper}>
+                <Text style={styles.customDimLabel}>Season(s)</Text>
+                <TextInput 
+                  style={styles.customDimInput} 
+                  placeholder="e.g., 1, 1-3, Complete" 
+                  placeholderTextColor={theme.placeholderText} 
+                  value={tvSeason} 
+                  onChangeText={handleChange(setTvSeason)} 
+                />
+              </View>
+              <View style={styles.customDimInputWrapper}>
+                <Text style={styles.customDimLabel}>Episodes on Release</Text>
+                <TextInput 
+                  style={styles.customDimInput} 
+                  keyboardType="numeric" 
+                  placeholder="e.g., 6" 
+                  placeholderTextColor={theme.placeholderText} 
+                  value={episodeCount} 
+                  onChangeText={handleChange(setEpisodeCount)} 
+                />
+              </View>
+            </View>
+
+            {availableEpisodes.length > 0 && (
+              <TouchableOpacity style={styles.scan3DButton} onPress={handleOpenEpisodeSelector}>
+                <Ionicons name="list-outline" size={24} color={theme.accent} />
+                <Text style={styles.scan3DButtonText}>
+                  Select Episodes ({tracklist.length} selected)
+                </Text>
+              </TouchableOpacity>
+            )}
+          </>
+        )}
+
         <Text style={styles.label}>Runtime</Text>
         <TextInput style={styles.input} placeholder={isMusic ? "e.g., 45:30" : "e.g., 136 min"} placeholderTextColor={theme.placeholderText} value={runtime} onChangeText={handleChange(setRuntime)} />
 
@@ -732,7 +937,7 @@ export default function ItemFormScreen({ route, navigation }) {
         <Text style={styles.label}>Genres (comma separated)</Text>
         <TextInput style={styles.input} placeholder={isMusic ? "e.g., Rock, Grunge, Synth-pop" : "e.g., Action, Sci-Fi"} placeholderTextColor={theme.placeholderText} value={genres} onChangeText={handleChange(setGenres)} />
 
-        <Text style={styles.label}>{isMusic ? 'Artist(s)' : 'Director'}</Text>
+        <Text style={styles.label}>{isMusic ? 'Artist(s)' : 'Director / Creator'}</Text>
         <TextInput style={styles.input} placeholder={isMusic ? "e.g., Nirvana" : "e.g., The Wachowskis"} placeholderTextColor={theme.placeholderText} value={director} onChangeText={handleChange(setDirector)} />
 
         <Text style={styles.label}>{isMusic ? 'Producer(s) / Writer(s)' : 'Writer'}</Text>
@@ -845,6 +1050,7 @@ export default function ItemFormScreen({ route, navigation }) {
         <View style={{ height: 60 }} />
       </KeyboardAwareScrollView>
 
+      {/* Cover Photo Modal */}
       <Modal
         visible={showCoverOptions}
         transparent={true}
@@ -905,6 +1111,106 @@ export default function ItemFormScreen({ route, navigation }) {
             </View>
           </View>
         </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* NEW: Episode Selector Modal with Season Grouping */}
+      <Modal
+        visible={showEpisodeSelector}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowEpisodeSelector(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.bottomSheetContainer}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Select Episodes</Text>
+              <TouchableOpacity onPress={() => setShowEpisodeSelector(false)}>
+                <Ionicons name="close" size={24} color={theme.textPrimary} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={{ maxHeight: 400, marginBottom: 20 }}>
+              <FlatList
+                data={sortedSeasons}
+                keyExtractor={(item) => `season-${item}`}
+                renderItem={({ item: season }) => {
+                  const seasonName = season === '0' ? 'Specials' : `Season ${season}`;
+                  const seasonEpisodes = episodesBySeason[season];
+                  
+                  const allSelected = seasonEpisodes.every(ep => 
+                    tempSelectedEpisodes.some(sel => sel.position === ep.position && sel.season === ep.season)
+                  );
+                  const someSelected = seasonEpisodes.some(ep => 
+                    tempSelectedEpisodes.some(sel => sel.position === ep.position && sel.season === ep.season)
+                  );
+
+                  const handleToggleSeason = () => {
+                    setTempSelectedEpisodes(prev => {
+                      if (allSelected) {
+                        // Deselect all in this season
+                        return prev.filter(ep => ep.season !== Number(season));
+                      } else {
+                        // Select all in this season
+                        const newSelected = [...prev];
+                        seasonEpisodes.forEach(ep => {
+                          if (!newSelected.some(sel => sel.position === ep.position && sel.season === ep.season)) {
+                            newSelected.push(ep);
+                          }
+                        });
+                        return newSelected;
+                      }
+                    });
+                  };
+
+                  return (
+                    <View style={styles.modalSeasonGroup}>
+                      <TouchableOpacity 
+                        style={styles.modalSeasonHeader} 
+                        onPress={handleToggleSeason}
+                        activeOpacity={0.7}
+                      >
+                        <View style={[styles.checkbox, allSelected ? styles.checkboxChecked : (someSelected ? styles.checkboxPartial : null)]}>
+                          {allSelected && <Ionicons name="checkmark" size={16} color={theme.onAccent} />}
+                          {!allSelected && someSelected && <Ionicons name="remove" size={16} color={theme.onAccent} />}
+                        </View>
+                        <Text style={styles.modalSeasonHeaderText}>{seasonName} ({seasonEpisodes.length} eps)</Text>
+                      </TouchableOpacity>
+                      
+                      <View style={styles.modalEpisodesList}>
+                        {seasonEpisodes.map((ep, index) => {
+                          const isSelected = tempSelectedEpisodes.some(
+                            sel => sel.position === ep.position && sel.season === ep.season
+                          );
+                          return (
+                            <TouchableOpacity 
+                              key={`${season}-${index}`}
+                              style={styles.episodeRow} 
+                              onPress={() => handleToggleEpisode(ep)}
+                              activeOpacity={0.7}
+                            >
+                              <View style={[styles.checkbox, isSelected && styles.checkboxChecked]}>
+                                {isSelected && <Ionicons name="checkmark" size={16} color={theme.onAccent} />}
+                              </View>
+                              <View style={styles.episodeInfo}>
+                                <Text style={styles.episodePosition}>E{ep.position}</Text>
+                                <Text style={styles.episodeTitle} numberOfLines={2}>{ep.title}</Text>
+                              </View>
+                              <Text style={styles.episodeDuration}>{ep.duration}</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  );
+                }}
+              />
+            </View>
+
+            <TouchableOpacity style={styles.sheetCancel} onPress={handleSaveEpisodes}>
+              <Text style={styles.sheetCancelText}>Done ({tempSelectedEpisodes.length} selected)</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
     </View>
   );
@@ -1043,6 +1349,10 @@ const getStyles = (theme) => ({
     backgroundColor: theme.accent,
     borderColor: theme.accent,
   },
+  checkboxPartial: {
+    backgroundColor: theme.accentSoft,
+    borderColor: theme.accent,
+  },
   toggleLabel: {
     flex: 1,
     fontSize: 14,
@@ -1139,6 +1449,14 @@ const getStyles = (theme) => ({
     marginBottom: 10,
     marginHorizontal: 20,
   },
+  sheetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.sheetBorder,
+  },
   sheetOption: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1170,5 +1488,54 @@ const getStyles = (theme) => ({
     fontSize: 16,
     fontWeight: 'bold',
     color: theme.textPrimary
-  }
+  },
+  // Episode Selector Styles
+  episodeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.cardBorder,
+  },
+  episodeInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  episodePosition: {
+    fontSize: 12,
+    color: theme.accent,
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  episodeTitle: {
+    fontSize: 14,
+    color: theme.textPrimary,
+  },
+  episodeDuration: {
+    fontSize: 12,
+    color: theme.textMuted,
+  },
+  // NEW: Modal Season Grouping Styles
+  modalSeasonGroup: {
+    marginBottom: 12,
+  },
+  modalSeasonHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    backgroundColor: theme.chipBackground,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  modalSeasonHeaderText: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: theme.accent,
+    marginLeft: 12,
+  },
+  modalEpisodesList: {
+    paddingLeft: 12,
+  },
 });

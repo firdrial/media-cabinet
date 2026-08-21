@@ -39,6 +39,7 @@ const DEFAULT_ROUGHNESS = {
 
 export const MEDIA_CATEGORIES = {
   FILM: 'FILM',
+  TELEVISION: 'TELEVISION', // <-- ADDED: For TV shows on VHS, DVD, Blu-Ray, LaserDisc
   MUSIC: 'MUSIC',
   GAME: 'GAME',
   OTHER: 'OTHER',
